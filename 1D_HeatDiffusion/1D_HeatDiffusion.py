@@ -15,7 +15,7 @@ from matplotlib import pyplot    #and the useful plotting library
 
 nx = 30
 dx = 2 / (nx - 1)
-nt = 30    #the number of timesteps we want to calculate
+nt = 90    #the number of timesteps we want to calculate
 nu = 1e-5 #the value of viscosity
 sigma = .2 #sigma is a parameter, we'll learn more about it later
 dt = sigma * dx**2 / numpy.max(nu) #dt is defined using sigma ... more later!
@@ -36,7 +36,7 @@ def eddy_diffusivity(rho, depth, g, rho_0):
     buoy = numpy.ones(nx) * 7e-5
     
     for i in range(0, nx - 1):
-        buoy[i] = numpy.sqrt( (rho[i+1] - rho[i]) / (depth[i+1] - depth[i]) * g/rho_0 )
+        buoy[i] = numpy.sqrt( numpy.abs(rho[i+1] - rho[i]) / (depth[i+1] - depth[i]) * g/rho_0 )
         
     low_values_flags = buoy < 7e-5  # Where values are low
     buoy[low_values_flags] = 7e-5
@@ -51,6 +51,8 @@ pyplot.plot(numpy.linspace(0, 30, nx), u);
 un = numpy.ones(nx) #our placeholder array, un, to advance the solution in time
 
 for n in range(nt):  #iterate through time
+#    print(u)
+#    print(n)
     un = u.copy() ##copy the existing values of u into un
     kz = eddy_diffusivity(calc_dens(un), depth, 9.81, 998.2) / 1e4
     kzn = kz.copy() 
