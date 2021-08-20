@@ -11,11 +11,13 @@ eddy diffusivity is estimated from buoyancy frequency according to Hondzo and St
 """
 import numpy                 #loading our favorite library
 from matplotlib import pyplot    #and the useful plotting library
+import math
 %matplotlib inline
 
 nx = 30
 dx = 2 / (nx - 1)
-nt = 90    #the number of timesteps we want to calculate
+days = 2
+nt = 24 * days    #the number of timesteps we want to calculate
 nu = 1e-5 #the value of viscosity
 sigma = .2 #sigma is a parameter, we'll learn more about it later
 dt = sigma * dx**2 / numpy.max(nu) #dt is defined using sigma ... more later!
@@ -47,16 +49,21 @@ def eddy_diffusivity(rho, depth, g, rho_0):
 kz = eddy_diffusivity(rho, depth, 9.81, 998.2) / 1e4
 
 pyplot.plot(numpy.linspace(0, 30, nx), u);
+# pyplot.plot(numpy.linspace(0, 30, nx), kz);
+
+bc = numpy.tile(numpy.array([-30, -20, -20, -10, -10, 0, 0, 50, 80, 100, 150, 250, 300, 350, 350, 350, 300, 250, 200, 150, 100, 0, 0, 0]), days)
 
 un = numpy.ones(nx) #our placeholder array, un, to advance the solution in time
 
 for n in range(nt):  #iterate through time
-#    print(u)
-#    print(n)
     un = u.copy() ##copy the existing values of u into un
     kz = eddy_diffusivity(calc_dens(un), depth, 9.81, 998.2) / 1e4
     kzn = kz.copy() 
+    u[0] = un[0] + 1/area[0] * kzn[0] * dt / dx**3 * (2 * un[0] - 5 * un[0+1] + 4 * un[0+2] - un[0+3]) + bc[n]/(depth[0+1]-depth[0]) * 1/(4181 * calc_dens(un[0]))
+    # u[nx] = un[nx] + 1/area[nx] * kzn[nx] * dt / dx**3 * (2 * un[dx] - 5 * un[dx-1] + 4 * un[dx-2] - un[dx-3])
     for i in range(1, nx - 1):
         u[i] = un[i] + 1/area[i] * kzn[i] * dt / dx**2 * (un[i+1] - 2 * un[i] + un[i-1])
+        # pyplot.plot(numpy.linspace(0, 30, nx), u,  '--');
         
 pyplot.plot(numpy.linspace(0, 30, nx), u);
+# pyplot.plot(numpy.linspace(0, 30, nx), kz);
