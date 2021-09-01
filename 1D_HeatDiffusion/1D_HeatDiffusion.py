@@ -16,7 +16,7 @@ import math
 
 nx = 30
 dx = 2 / (nx - 1)
-days = 30
+days = 120
 nt = 24 * days    #the number of timesteps we want to calculate
 nu = 1e-5 #the value of viscosity
 sigma = .2 #sigma is a parameter, we'll learn more about it later
@@ -58,13 +58,13 @@ un = numpy.ones(nx) #our placeholder array, un, to advance the solution in time
 for n in range(nt):  #iterate through time
     un = u.copy() ##copy the existing values of u into un
     kz = eddy_diffusivity(calc_dens(un), depth, 9.81, 998.2) / 1e4
-    kzn = kz.copy() 
-    #u[0] = un[0] + 1/area[0] * kzn[0] * dt / dx**3 * (2 * un[0] - 5 * un[0+1] + 4 * un[0+2] - un[0+3]) + bc[n]/(depth[0+1]-depth[0]) * 1/(4181 * calc_dens(un[0]))
-    u[0] = un[0] + bc[n]/(depth[0+1]-depth[0]) * 1/(4181 * calc_dens(un[0]) * area[0])
+    kzn = kz.copy()     # u[0] = un[0] + 1/area[0] * kzn[0] * dt / dx**3 * (2 * un[0] - 5 * un[0+1] + 4 * un[0+2] - un[0+3]) + bc[n]/(depth[0+1]-depth[0]) * 1/(4181 * calc_dens(un[0]))
+    # u[0] = un[0] + bc[n]/(depth[0+1]-depth[0]) * 1/(4181 * calc_dens(un[0]) * area[0])
+    u[0] = un[0] + 1/area[0] * kzn[0] * dt / dx**2 *  (un[1] - un[0]) + bc[n]/(depth[0+1]-depth[0]) * 1/(4181 * calc_dens(un[0]) * area[0])
     # u[nx] = un[nx] + 1/area[nx] * kzn[nx] * dt / dx**3 * (2 * un[dx] - 5 * un[dx-1] + 4 * un[dx-2] - un[dx-3])
     for i in range(1, nx - 1):
-        u[i] = un[i] + 1/area[i] * kzn[i] * dt / dx**2 * (un[i+1] - 2 * un[i] + un[i-1])
-        # pyplot.plot(numpy.linspace(0, 30, nx), u,  '--');
+        u[i] = un[i] + 1/area[i] *  kzn[i] * dt / dx**2 * (un[i+1] - 2 * un[i] + un[i-1])
+    pyplot.plot(numpy.linspace(0, 30, nx), u,  '--');
         
 pyplot.plot(numpy.linspace(0, 30, nx), u);
 # pyplot.plot(numpy.linspace(0, 30, nx), kz);
