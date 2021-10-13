@@ -7,12 +7,18 @@
 #' @email: rladwig2@wisc.edu
 #' 
 #' temperature equation as Tt = 1/A K Tzz
-#' code is based on 12 steps to Navier-Stokes by (c) Lorena A. Barba, Gilbert F. Forsyth 2017.
-#' eddy diffusivity is estimated from buoyancy frequency according to Hondzo and Stefan (1993)
+#' Diffusion code is based on 12 steps to Navier-Stokes by (c) Lorena A. Barba, Gilbert F. Forsyth 2017.
+#' 
+#' Eddy diffusivity is estimated from buoyancy frequency according to Hondzo and Stefan (1993)
 #' 
 #' Mixing dynamics code is taken from Herb & Stefan (2004) Temperature stratification and Mixing 
 #' Dynamics in a Shallow Lake with Submersed Macrophytes. Lake & Reservoir Management
 #' https://www.tandfonline.com/doi/pdf/10.1080/07438140409354159
+#' 
+#' Convective overturn algorithm is taken from Salorante & Andersen (2007) MyLake—A multi-year 
+#' lake simulation model code suitable for uncertainty and sensitivity analysis simulations. 
+#' Ecological Modeling
+#' https://doi.org/10.1016/j.ecolmodel.2007.03.018 
 
 
 nx = 30
@@ -104,7 +110,7 @@ km = 0.4 # specific light attenuation coefficient for macrophytes
 P = 0 # macrophyte biomass per unit volume in gDW m-3
 
 um <- c()
-# modeling code
+# modeling code for vertical 1D diffusion
 for (n in 1:floor(nt/dt)){  #iterate through time
   un = u ##copy the existing values of u into un
   kz = eddy_diffusivity(calc_dens(un), depth, 9.81, 998.2) / 86400#1e4
@@ -132,6 +138,8 @@ for (n in 1:floor(nt/dt)){  #iterate through time
       H[i] * 1/(4181 * calc_dens(un[i]) )
   }
   
+  # the mixed layer depth is determined for each time step by comparing kinetic enery available
+  # from wind and the potential energy required to completely mix the water column to a given depth
   Zcv <- seq(1, nx) %*% area / sum(area)
   KE = Uw(n * dt) *  vW(n * dt) * dt
   maxdep = 1
@@ -163,22 +171,24 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   # first stable layer below the unstable layer(s) (i.e., a layer volume weighed means of 
   # temperature and other variables are calculated for the mixed water column). 
   # This procedure is continued until the vertical density profile in the whole water column becomes neutral or stable.
-  
   dens_u = calc_dens(u) 
   diff_dens_u <- (diff(dens_u)) 
   diff_dens_u[abs(diff(dens_u)) < 1e-1] = 0
   while (any(diff_dens_u < 0)){
     dens_u = calc_dens(u) 
     for (dep in 1:(nx-1)){
-      if (dens_u[dep+1] < dens_u[dep]){
+      if (dens_u[dep+1] < dens_u[dep] & abs(dens_u[dep+1] - dens_u[dep]) > 1e-1){
         u[dep:(dep+1)] = mean(u[dep:(dep+1)])#max(u[1:maxdep])
+        print(dep)
         break
       }
     }
+    dens_u = calc_dens(u) 
     diff_dens_u <- (diff(dens_u)) 
     diff_dens_u[abs(diff(dens_u)) < 1e-1] = 0
   }
 
+  
   um <- cbind(um, u)
   
   
@@ -187,7 +197,13 @@ for (n in 1:floor(nt/dt)){  #iterate through time
 }
 
 str(um)
-plot(um[1,], col = 'red', type = 'l', xlab = 'Time', ylab='Temeprature')
-lines(um[15,], col = 'orange', lty = 'dashed')
-lines(um[20,], col = 'magenta', lty = 'dashed')
-lines(um[25,], col = 'blue', lty = 'dashed')
+plot(seq(1, ncol(um))*dt/24/3600, um[1,], col = 'red', type = 'l', xlab = 'Time (d)', ylab='Temeprature (degC)')
+lines(seq(1, ncol(um))*dt/24/3600, um[15,], col = 'orange', lty = 'dashed')
+lines(seq(1, ncol(um))*dt/24/3600, um[18,], col = 'green', lty = 'dashed')
+lines(seq(1, ncol(um))*dt/24/3600, um[20,], col = 'magenta', lty = 'dashed')
+lines(seq(1, ncol(um))*dt/24/3600, um[25,], col = 'blue', lty = 'dashed')
+
+filled.contour(x = seq(1, ncol(um))*dt/24/3600,
+        y = seq(1, nx),
+        z = t(um))
+
