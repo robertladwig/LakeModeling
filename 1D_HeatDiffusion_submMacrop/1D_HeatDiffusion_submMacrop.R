@@ -37,8 +37,8 @@ calc_dens <-function(wtemp){
 }
 
 # here we define our initial profile
-u = rep(1,max(nx))  * 10    
-u[(0):(10)] = 25 
+u = rep(1,max(nx))  * 5#10    
+u[(0):(10)] = 7
 
 rho = calc_dens(u)
 
@@ -60,7 +60,7 @@ kz = eddy_diffusivity(rho, depth, 9.81, 998.2) / 86400# 1e4
 
 # plot initial profile
 plot( u, seq(0, 30, length.out=(nx)),  
-      ylim = rev(range(seq(0, 30, length.out=(nx)))), xlim = c(0,40), type ='l');
+      ylim = rev(range(seq(0, 30, length.out=(nx)))), xlim = c(0,15), type ='l');
 # lines( u, seq(0, 30, length.out=(nx)),  
        # ylim = rev(range(seq(0, 30, length.out=(nx)))) );
 
@@ -69,19 +69,95 @@ bc =c(seq(0,350, length.out = 43200) ,seq(350,0, length.out=43200))
 bc.approx = approxfun(x = seq(1,86400), y = bc, method = "linear", rule = 2)
 # linearize bc to get bigger time steps
 
+bound <- matrix(c(seq(1,12,1),
+                  169, 274, 414, 552, 651, 684, 642, 537, 397, 259, 160, 127,
+                  8.3, 9., 13.5,13.9,21.8,24.7,29.4,26.6,24.9,15.,9.7,6.6,
+                  2.8,3.3,4.9,4.,5.3,7.8,11.8,11.5,7.7,6.8,6.5,2.4,
+                  11.6,11.7,16.4,15.6,16.6,16.7,12.7,11.7,14.,12.9,14.8,11.6), nrow = 12, byrow = FALSE)
+bound <- as.data.frame(bound)
+colnames(bound) <- c('Month','Jsw','Tair','Dew','vW')
+bound$Uw <- 19.0 + 0.95 * (bound$vW * 1000/3600)^2 # function to calculate wind shear stress (and transforming wind speed from km/h to m/s)
+bound$vW <- bound$vW * 1000/3600
+bound$Day <- cumsum(c(1,31,28,31,30,31,30,31,31,30,31,30))
+
+Jsw <- approxfun(x = bound$Day * 24 * 3600, y = bound$Jsw, method = "linear", rule = 2)
+Tair <- approxfun(x = bound$Day* 24 * 3600, y = bound$Tair, method = "linear", rule = 2)
+Dew <- approxfun(x = bound$Day* 24 * 3600, y = bound$Dew, method = "linear", rule = 2)
+Uw <- approxfun(x = bound$Day* 24 * 3600, y = bound$Uw, method = "linear", rule = 2)
+vW <- approxfun(x = bound$Day* 24 * 3600, y = bound$vW, method = "linear", rule = 2)
+
+Rl <- 0.3
+Acoeff <- 0.6 # coefficient between 0.5 - 0.7
+sigma <- 11.7 * 10^(-8) # cal / (cm2 d K4) or: 4.9 * 10^(-3) # Stefan-Boltzmann constant in [J (m2 d K4)-1]
+eps <- 0.97 # emissivity of water
+rho <- 0.9982 # density (g per cm3)
+cp <- 0.99 # specific heat (cal per gram per deg C)
+c1 <- 0.47 # Bowen's coefficient
+a <- 7 # constant
+c <- 9e4 # empirical constant
+g <- 9.81  # gravity (m/s2)
+
+reflect <- 0.6 # fraction of reflected solar radiation
+infra = 0.3 # fraction infrared radiation
+kd = 0.2 # light attenuation coefficient
+km = 0.4 # specific light attenuation coefficient for macrophytes
+P = 0 # macrophyte biomass per unit volume in gDW m-3
+
+
 # modeling code
 for (n in 1:floor(nt/dt)){  #iterate through time
   un = u ##copy the existing values of u into un
   kz = eddy_diffusivity(calc_dens(un), depth, 9.81, 998.2) / 86400#1e4
   kzn = kz     # u[0] = un[0] + 1/area[0] * kzn[0] * dt / dx**3 * (2 * un[0] - 5 * un[0+1] + 4 * un[0+2] - un[0+3]) + bc[n]/(depth[0+1]-depth[0]) * 1/(4181 * calc_dens(un[0]))
   # u[0] = un[0] + bc[n]/(depth[0+1]-depth[0]) * 1/(4181 * calc_dens(un[0]) * area[0])
+  eair <- (4.596 * exp((17.27 * Dew(n * dt)) / (237.3 + Dew(n * dt)))) # air vapor pressure
+  esat <- 4.596 * exp((17.27 * Tair(n * dt)) / (237.3 + Tair(n * dt))) # saturation vapor pressure
+  RH <- eair/esat *100 # relative humidity
+  es <- 4.596 * exp((17.27 * u[1])/ (273.3+u[1]))
+  Q <- (Jsw(n * dt) + 
+          (sigma * (Tair(n * dt) + 273)^4 * (Acoeff + 0.031 * sqrt(eair)) * (1 - Rl)) - # longwave radiation into the lake
+    (eps * sigma * (u[1] + 273)^4)  - # backscattering longwave radiation from the lake
+    (c1 * Uw(n * dt) * (u[1] - Tair(n * dt))) - # convection
+    (Uw(n * dt) * ((es) - (eair))) ) # evaporation
+  
+  H = (1- reflect) * (1- infra) * Jsw(n * dt) * exp(-(kd + km * P) *seq(1,nx)) 
+  
   u[1] = un[1] + 1/area[1] * kzn[1] * dt / dx**2 *  (un[2] - un[1]) + 
-    bc.approx(n*dt)/(depth[1+1]-depth[1]) * 1/(4181 * calc_dens(un[1]) )#* area[0])
+    Q * 1/(4181 * calc_dens(un[1]) ) +
+    H[1] * 1/(4181 * calc_dens(un[1]) ) #* area[0]) bc.approx(n*dt)/(depth[1+1]-depth[1])
   # u[nx] = un[nx] + 1/area[nx] * kzn[nx] * dt / dx**3 * (2 * un[dx] - 5 * un[dx-1] + 4 * un[dx-2] - un[dx-3])
   for (i in 2:(nx-1)){
     u[i] = un[i] + 1/area[i] * (area[i]-area[i+1])/(depth[i+1]-depth[i]) * 
-      kzn[i] * dt / dx**2 * (un[i+1] - 2 * un[i] + un[i-1])
+      kzn[i] * dt / dx**2 * (un[i+1] - 2 * un[i] + un[i-1]) +
+      H[i] * 1/(4181 * calc_dens(un[i]) )
   }
+  
+  Zcv <- seq(1, nx) %*% area / sum(area)
+  KE = Uw(n * dt) *  vW(n * dt) * dt
+  maxdep = 1
+  for (dep in 1:(nx-1)){
+    if (dep == 1){
+      # PE = seq(1,nx)[dep] * g * ( seq(1,nx)[dep+1] - Zcv) * (
+        # calc_dens(un[dep+1]) - calc_dens(un[dep]))
+      PE = abs(g/area[1] *  ( seq(1,nx)[dep] - Zcv) * area[dep] * calc_dens(un[dep]) * 1 )
+    } else {
+      PEprior = PE
+      # PE = seq(1,nx)[dep] * g * ( seq(1,nx)[dep+1] - Zcv) * (
+        # calc_dens(un[dep+1]) - calc_dens(un[dep])) + PEprior
+      PE = abs(g/area[1] *  ( seq(1,nx)[dep] - Zcv) * area[dep] * calc_dens(un[dep]) * 1 +
+        PEprior)
+    }
+    
+      if (PE > KE){
+        maxdep = dep
+        break
+      }
+    maxdep = dep
+  }
+  if (maxdep != 1){print('mixing!')}
+  u[1:maxdep] = max(u[1:maxdep])
+  
+  
   lines( u, seq(0, 30, length.out=(nx)),
           ylim = rev(range(seq(0, 30, length.out=(nx)))), lty = 'dashed');
 }
