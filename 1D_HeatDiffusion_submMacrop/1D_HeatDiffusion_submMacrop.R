@@ -122,12 +122,12 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   
   H = (1- reflect) * (1- infra) * Jsw(n * dt) * exp(-(kd + km * P) *seq(1,nx)) 
   
-  u[1] = un[1] + 1/area[1] * kzn[1] * dt / dx**2 *  (un[2] - un[1]) + 
+  u[1] = un[1] +  kzn[1] * dt / dx**2 *  (un[2] - un[1]) + #1/area[1] *
      Q * area[1]/(4181 * calc_dens(un[1]) ) +
      H[1] * 1/(4181 * calc_dens(un[1]) ) #* area[0]) bc.approx(n*dt)/(depth[1+1]-depth[1])
   # u[nx] = un[nx] + 1/area[nx] * kzn[nx] * dt / dx**3 * (2 * un[dx] - 5 * un[dx-1] + 4 * un[dx-2] - un[dx-3])
   for (i in 2:(nx-1)){
-    u[i] = un[i] + 1/area[i] *# (area[i]-area[i+1])/(depth[i+1]-depth[i]) * 
+    u[i] = un[i] + #1/area[i] *# (area[i]-area[i+1])/(depth[i+1]-depth[i]) * 
       kzn[i] * dt / dx**2 * (un[i+1] - 2 * un[i] + un[i-1]) +
       H[i] * 1/(4181 * calc_dens(un[i]) )
   }
@@ -139,12 +139,12 @@ for (n in 1:floor(nt/dt)){  #iterate through time
     if (dep == 1){
       # PE = seq(1,nx)[dep] * g * ( seq(1,nx)[dep+1] - Zcv) * (
         # calc_dens(un[dep+1]) - calc_dens(un[dep]))
-      PE = abs(g/area[1] *  ( seq(1,nx)[dep] - Zcv) * area[dep] * calc_dens(un[dep]) * 1 )
+      PE = abs(g/area[1] *  ( seq(1,nx)[dep] - Zcv) * area[dep] * calc_dens(u[dep]) * 1 )
     } else {
       PEprior = PE
       # PE = seq(1,nx)[dep] * g * ( seq(1,nx)[dep+1] - Zcv) * (
         # calc_dens(un[dep+1]) - calc_dens(un[dep])) + PEprior
-      PE = abs(g/area[1] *  ( seq(1,nx)[dep] - Zcv) * area[dep] * calc_dens(un[dep]) * 1 +
+      PE = abs(g/area[1] *  ( seq(1,nx)[dep] - Zcv) * area[dep] * calc_dens(u[dep]) * 1 +
         PEprior)
       # PE = abs(g/area[1] *  ( seq(1,nx)[1:dep] - Zcv) * area[1:dep] * calc_dens(un[1:dep]) + seq(1,nx)[1:dep])
     }
@@ -158,6 +158,27 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   # if (maxdep != 1){print('mixing!')}
   u[1:maxdep] = rep(u[1],maxdep)#max(u[1:maxdep])
   
+  # convective overturn: Convective mixing is induced by an unstable density profile. 
+  # All groups of water layers where the vertical density profile is unstable are mixed with the 
+  # first stable layer below the unstable layer(s) (i.e., a layer volume weighed means of 
+  # temperature and other variables are calculated for the mixed water column). 
+  # This procedure is continued until the vertical density profile in the whole water column becomes neutral or stable.
+  
+  dens_u = calc_dens(u) 
+  diff_dens_u <- (diff(dens_u)) 
+  diff_dens_u[abs(diff(dens_u)) < 1e-1] = 0
+  while (any(diff_dens_u < 0)){
+    dens_u = calc_dens(u) 
+    for (dep in 1:(nx-1)){
+      if (dens_u[dep+1] < dens_u[dep]){
+        u[dep:(dep+1)] = mean(u[dep:(dep+1)])#max(u[1:maxdep])
+        break
+      }
+    }
+    diff_dens_u <- (diff(dens_u)) 
+    diff_dens_u[abs(diff(dens_u)) < 1e-1] = 0
+  }
+
   um <- cbind(um, u)
   
   
@@ -167,5 +188,6 @@ for (n in 1:floor(nt/dt)){  #iterate through time
 
 str(um)
 plot(um[1,], col = 'red', type = 'l', xlab = 'Time', ylab='Temeprature')
-lines(um[20,], col = 'orange', lty = 'dashed')
+lines(um[15,], col = 'orange', lty = 'dashed')
+lines(um[20,], col = 'magenta', lty = 'dashed')
 lines(um[25,], col = 'blue', lty = 'dashed')
