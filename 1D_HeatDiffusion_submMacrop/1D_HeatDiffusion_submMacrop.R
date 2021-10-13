@@ -38,7 +38,7 @@ calc_dens <-function(wtemp){
 
 # here we define our initial profile
 u = rep(1,max(nx))  * 5#10    
-u[(0):(10)] = 7
+# u[(0):(10)] = 7
 
 rho = calc_dens(u)
 
@@ -60,7 +60,7 @@ kz = eddy_diffusivity(rho, depth, 9.81, 998.2) / 86400# 1e4
 
 # plot initial profile
 plot( u, seq(0, 30, length.out=(nx)),  
-      ylim = rev(range(seq(0, 30, length.out=(nx)))), xlim = c(0,15), type ='l');
+      ylim = rev(range(seq(0, 30, length.out=(nx)))), xlim = c(0,35), type ='l');
 # lines( u, seq(0, 30, length.out=(nx)),  
        # ylim = rev(range(seq(0, 30, length.out=(nx)))) );
 
@@ -103,7 +103,7 @@ kd = 0.2 # light attenuation coefficient
 km = 0.4 # specific light attenuation coefficient for macrophytes
 P = 0 # macrophyte biomass per unit volume in gDW m-3
 
-
+um <- c()
 # modeling code
 for (n in 1:floor(nt/dt)){  #iterate through time
   un = u ##copy the existing values of u into un
@@ -123,11 +123,11 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   H = (1- reflect) * (1- infra) * Jsw(n * dt) * exp(-(kd + km * P) *seq(1,nx)) 
   
   u[1] = un[1] + 1/area[1] * kzn[1] * dt / dx**2 *  (un[2] - un[1]) + 
-    Q * 1/(4181 * calc_dens(un[1]) ) +
-    H[1] * 1/(4181 * calc_dens(un[1]) ) #* area[0]) bc.approx(n*dt)/(depth[1+1]-depth[1])
+     Q * area[1]/(4181 * calc_dens(un[1]) ) +
+     H[1] * 1/(4181 * calc_dens(un[1]) ) #* area[0]) bc.approx(n*dt)/(depth[1+1]-depth[1])
   # u[nx] = un[nx] + 1/area[nx] * kzn[nx] * dt / dx**3 * (2 * un[dx] - 5 * un[dx-1] + 4 * un[dx-2] - un[dx-3])
   for (i in 2:(nx-1)){
-    u[i] = un[i] + 1/area[i] * (area[i]-area[i+1])/(depth[i+1]-depth[i]) * 
+    u[i] = un[i] + 1/area[i] *# (area[i]-area[i+1])/(depth[i+1]-depth[i]) * 
       kzn[i] * dt / dx**2 * (un[i+1] - 2 * un[i] + un[i-1]) +
       H[i] * 1/(4181 * calc_dens(un[i]) )
   }
@@ -135,7 +135,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   Zcv <- seq(1, nx) %*% area / sum(area)
   KE = Uw(n * dt) *  vW(n * dt) * dt
   maxdep = 1
-  for (dep in 1:(nx-1)){
+  for (dep in 1:(nx)){
     if (dep == 1){
       # PE = seq(1,nx)[dep] * g * ( seq(1,nx)[dep+1] - Zcv) * (
         # calc_dens(un[dep+1]) - calc_dens(un[dep]))
@@ -146,18 +146,26 @@ for (n in 1:floor(nt/dt)){  #iterate through time
         # calc_dens(un[dep+1]) - calc_dens(un[dep])) + PEprior
       PE = abs(g/area[1] *  ( seq(1,nx)[dep] - Zcv) * area[dep] * calc_dens(un[dep]) * 1 +
         PEprior)
+      # PE = abs(g/area[1] *  ( seq(1,nx)[1:dep] - Zcv) * area[1:dep] * calc_dens(un[1:dep]) + seq(1,nx)[1:dep])
     }
-    
+    # PE = abs(g/area[1] *  ( seq(1,nx)[1:dep] - Zcv) * area[1:dep] * calc_dens(un[1:dep]) + seq(1,nx)[1:dep]) 
       if (PE > KE){
         maxdep = dep
         break
       }
     maxdep = dep
   }
-  if (maxdep != 1){print('mixing!')}
-  u[1:maxdep] = max(u[1:maxdep])
+  # if (maxdep != 1){print('mixing!')}
+  u[1:maxdep] = rep(u[1],maxdep)#max(u[1:maxdep])
+  
+  um <- cbind(um, u)
   
   
   lines( u, seq(0, 30, length.out=(nx)),
           ylim = rev(range(seq(0, 30, length.out=(nx)))), lty = 'dashed');
 }
+
+str(um)
+plot(um[1,], col = 'red', type = 'l', xlab = 'Time', ylab='Temeprature')
+lines(um[20,], col = 'orange', lty = 'dashed')
+lines(um[25,], col = 'blue', lty = 'dashed')
