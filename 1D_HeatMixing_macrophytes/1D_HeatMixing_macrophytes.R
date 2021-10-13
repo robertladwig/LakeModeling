@@ -203,6 +203,15 @@ lines(seq(1, ncol(um))*dt/24/3600, um[18,], col = 'green', lty = 'dashed')
 lines(seq(1, ncol(um))*dt/24/3600, um[20,], col = 'magenta', lty = 'dashed')
 lines(seq(1, ncol(um))*dt/24/3600, um[25,], col = 'blue', lty = 'dashed')
 
+for (i in seq(1,ncol(um), length.out = 100)){
+  i = floor(i)
+  png(paste0('Projects/animation_macrophyte/',i,'.png'))
+  plot(um[,i], seq(0,30, length.out=nx),
+       ylim = rev(range(seq(0, 30, length.out=(nx)))), col = 'red', type = 'l', xlab = 'Time (d)', ylab='Temeprature (degC)',
+       xlim = c(-1,30), main = paste0('time (d): ',round((i*dt)/24/3600),1))
+  dev.off()
+}
+
 filled.contour(x = seq(1, ncol(um))*dt/24/3600,
         y = seq(1, nx),
         z = t(um))
