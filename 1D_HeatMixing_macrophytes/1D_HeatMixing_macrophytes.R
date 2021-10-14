@@ -128,7 +128,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   
   H = (1- reflect) * (1- infra) * Jsw(n * dt) * exp(-(kd + km * P) *seq(1,nx)) 
   
-  u[1] = un[1] +  kzn[1] * dt / dx**2 *  (un[2] - un[1]) + #1/area[1] *
+  u[1] = un[1] + # kzn[1] * dt / dx**2 *  (un[2] - un[1]) + #1/area[1] *
      Q * area[1]/(4181 * calc_dens(un[1]) ) +
      H[1] * 1/(4181 * calc_dens(un[1]) ) #* area[0]) bc.approx(n*dt)/(depth[1+1]-depth[1])
   # u[nx] = un[nx] + 1/area[nx] * kzn[nx] * dt / dx**3 * (2 * un[dx] - 5 * un[dx-1] + 4 * un[dx-2] - un[dx-3])
@@ -164,7 +164,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
     maxdep = dep
   }
   # if (maxdep != 1){print('mixing!')}
-  u[1:maxdep] = rep(u[1],maxdep)#max(u[1:maxdep])
+  u[1:maxdep] = mean(u[1:maxdep])#rep(u[1],maxdep)#max(u[1:maxdep])
   
   # convective overturn: Convective mixing is induced by an unstable density profile. 
   # All groups of water layers where the vertical density profile is unstable are mixed with the 
@@ -173,19 +173,19 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   # This procedure is continued until the vertical density profile in the whole water column becomes neutral or stable.
   dens_u = calc_dens(u) 
   diff_dens_u <- (diff(dens_u)) 
-  diff_dens_u[abs(diff(dens_u)) < 1e-1] = 0
+  diff_dens_u[abs(diff(dens_u)) < 1e-4] = 0
   while (any(diff_dens_u < 0)){
     dens_u = calc_dens(u) 
     for (dep in 1:(nx-1)){
-      if (dens_u[dep+1] < dens_u[dep] & abs(dens_u[dep+1] - dens_u[dep]) > 1e-1){
+      if (dens_u[dep+1] < dens_u[dep] & abs(dens_u[dep+1] - dens_u[dep]) > 1e-4){
         u[dep:(dep+1)] = mean(u[dep:(dep+1)])#max(u[1:maxdep])
-        print(dep)
+        # print(dep)
         break
       }
     }
     dens_u = calc_dens(u) 
     diff_dens_u <- (diff(dens_u)) 
-    diff_dens_u[abs(diff(dens_u)) < 1e-1] = 0
+    diff_dens_u[abs(diff(dens_u)) < 1e-4] = 0
   }
 
   
@@ -203,12 +203,12 @@ lines(seq(1, ncol(um))*dt/24/3600, um[18,], col = 'green', lty = 'dashed')
 lines(seq(1, ncol(um))*dt/24/3600, um[20,], col = 'magenta', lty = 'dashed')
 lines(seq(1, ncol(um))*dt/24/3600, um[25,], col = 'blue', lty = 'dashed')
 
-for (i in seq(1,ncol(um), length.out = 100)){
+for (i in seq(1,ncol(um), length.out = 200)){
   i = floor(i)
   png(paste0('Projects/animation_macrophyte/',i,'.png'))
   plot(um[,i], seq(0,30, length.out=nx),
-       ylim = rev(range(seq(0, 30, length.out=(nx)))), col = 'red', type = 'l', xlab = 'Time (d)', ylab='Temeprature (degC)',
-       xlim = c(-1,30), main = paste0('time (d): ',round((i*dt)/24/3600),1))
+       ylim = rev(range(seq(0, 30, length.out=(nx)))), col = 'red', type = 'l', xlab = 'Time (d)', ylab='Temperature (degC)',
+       xlim = c(4,20), main = paste0('time (d): ',round((i*dt)/24/3600,1)))
   dev.off()
 }
 
