@@ -4,7 +4,7 @@
 Collection of scripts to simulate heat transport as well as reactive transport in aquatic ecosystems.
 
 ## To do 
-- add BC to 1D heat transport, i.e., meteorological driver data
+- ~~add BC to 1D heat transport, i.e., meteorological driver data~~
 - check numerical stabilities
 - more advanced turbulence closure scheme for 1D heat transport
 - coupling to reactive biogeochemical processes
