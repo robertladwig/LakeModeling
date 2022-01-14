@@ -8,7 +8,7 @@ Collection of scripts to simulate heat transport as well as reactive transport i
 
 ## To do 
 - ~~add BC to 1D heat transport, i.e., meteorological driver data~~
-- ~~add ice module ~~
+- ~~add ice module~~
 - check numerical stabilities
 - more advanced turbulence closure scheme for 1D heat transport
 - coupling to reactive biogeochemical processes
