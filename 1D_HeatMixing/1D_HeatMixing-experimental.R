@@ -27,6 +27,11 @@
 #' MyLake—A multi-year lake simulation model code suitable for uncertainty 
 #' and sensitivity analysis simulations. Ecological Modeling
 #' https://doi.org/10.1016/j.ecolmodel.2007.03.018 
+#' 
+#' Ice formation and growth/decay code is taken from Saloranta & Andersen (2007) 
+#' MyLake—A multi-year lake simulation model code suitable for uncertainty 
+#' and sensitivity analysis simulations. Ecological Modeling
+#' https://doi.org/10.1016/j.ecolmodel.2007.03.018 
 
 ## remove everything from workspace
 rm(list = ls())
