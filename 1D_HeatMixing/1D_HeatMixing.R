@@ -103,13 +103,14 @@ wQ = data.frame('time' = as.POSIXct(meteo$date, format = '%m/%d/%Y'),
                 'vW' = meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond,
                 'airT' = meteo$Air_Temperature_celsius,
                 'dewT' = meteo$Dewpoint_Air_Temperature_Celsius)
-wQ$vW <- wQ$vW * 0.3
+wQ$vW <- wQ$vW * 0.3 #* 0.3
 wQ$Uw <- 1225*0.0013* wQ$vW^2 # 19.0 + 0.95 * (wQ$vW)^2 # wind shear stress
 wQ$Uwalt <- 19.0 + 0.95 * (wQ$vW)^2
 
 wQ$dt = wQ$time - (wQ$time[1]) +1
 
-nt = 365 * 86400 # as.double(max(wQ$dt)) # maximum simulation length
+nyear = 5
+nt = nyear * 365 * 86400 # as.double(max(wQ$dt)) # maximum simulation length
 
 ## linearization of driver data, so model can have dynamic step
 Jsw <- approxfun(x = wQ$dt, y = wQ$Jsw, method = "linear", rule = 2)
@@ -170,6 +171,7 @@ Lf <- c()
 Sf <- c()
 mix <- c()
 therm.z <- c()
+mix.z <- c()
 
 ## modeling code for vertical 1D mixing and heat transport
 for (n in 1:floor(nt/dt)){  #iterate through time
@@ -188,9 +190,9 @@ for (n in 1:floor(nt/dt)){  #iterate through time
           longwave(sigma = sigma, Tair = Tair(n * dt), Acoeff = Acoeff, 
                    eair = eair, Rl = Rl) +
           backscattering(eps = eps, sigma = sigma, Twater = un[1]) +
-          latent(c1 = c1, wind = Uwalt(n * dt), Twater = un[1], Tair = 
+          latent(c1 = c1, wind = Uw(n * dt), Twater = un[1], Tair = 
                    Tair(n *dt)) + 
-          sensible(wind = Uwalt(n * dt), esat = esat, eair = eair))
+          sensible(wind = Uw(n * dt), esat = esat, eair = eair)) #Uwalt
   
   # heat addition over depth
   H = (1- reflect) * (1- infra) * (Jsw(n * dt))  * #
@@ -206,8 +208,8 @@ for (n in 1:floor(nt/dt)){  #iterate through time
  Lwf <- append(Lwf,  (sigma * (Tair(n * dt) + 273)^4 * (Acoeff + 0.031 * 
                                                           sqrt(eair)) * (1 - Rl)))
  BLwf <- append(BLwf, (-1)*  (eps * sigma * (un[1] + 273)^4))
- Lf <- append(Lf, (-1) * (c1 * Uwalt(n * dt) * (un[1] - Tair(n * dt))) )
- Sf <- append(Sf, (-1)* (Uwalt(n * dt) * ((esat) - (eair))) )
+ Lf <- append(Lf, (-1) * (c1 * Uw(n * dt) * (un[1] - Tair(n * dt))) )
+ Sf <- append(Sf, (-1)* (Uw(n * dt) * ((esat) - (eair))) )
  
   # all other layers in between
   for (i in 2:(nx-1)){
@@ -269,7 +271,12 @@ for (n in 1:floor(nt/dt)){  #iterate through time
     diff_dens_u <- (diff(dens_u)) 
     diff_dens_u[abs(diff(dens_u)) < 1e-4] = 0
   }
-
+  
+  dens_u_n2 = calc_dens(u) 
+  n2 <- 9.81/mean(calc_dens(u)) * (lead(dens_u_n2) - lag(dens_u_n2))/dx
+  max.n2 <- ifelse(max(n2, na.rm = T) > 1E-4, which.max(n2) * dx, dx * nx)
+  mix.z <- append(mix.z, max.n2)
+  
   um <- cbind(um, u)
   
   lines( u, seq(0, dx * nx, length.out=(nx)),
@@ -291,6 +298,20 @@ plot(therm.z, type = 'l',ylim = rev(range( seq(0,zmax, length.out=nx))),
      col = 'red', xlab = 'Time', 
         ylab= 'Mixed Layer Depth (m)', lwd= 3)
 lines(therm.z.roll, lty ='dashed', lwd =3)
+
+# decision if lake is stratified or not: 1 deg C criterium
+strat.state <- um[1,] - um[nx,]
+strat.state <- ifelse(strat.state > 1, 1, 0)
+plot(seq(1, ncol(um))*dt/24/3600, strat.state, col = 'red', type = 'l', 
+     xlab = 'Time (d)', ylab='Stratified conditions', ylim=c(0,1), lwd = 2)
+
+## Max. buoyancy frequency layer depth (direct model output)
+mix.z.roll = zoo::rollmean(mix.z, 14)
+plot(mix.z, type = 'l',ylim = rev(range( seq(0,zmax, length.out=nx))), 
+     col = 'red', xlab = 'Time', 
+     ylab= 'Max. Buoyancy Freq. Depth (m)', lwd= 3)
+lines(mix.z.roll, lty ='dashed', lwd =3)
+
 
 ## meteorological heat fluxes
 # plot(Hts )
