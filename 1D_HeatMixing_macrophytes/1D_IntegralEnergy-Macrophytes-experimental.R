@@ -43,26 +43,23 @@ setwd(dirname(rstudioapi::getSourceEditorContext()$path))
 library(tidyverse)
 library(RColorBrewer)
 library(patchwork)
+library(rLakeAnalyzer)
 n <- 60
 qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
 col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, 
                            rownames(qual_col_pals)))
 
 ## lake configurations
-zmax = 25 # maximum lake depth
-nx = 25 # number of layers we will have
-dt = 3600 # 24 hours times 60 min/hour times 60 seconds/min
+zmax = 1.7
+nx = 10 # number of layers we will have
+dt = 3600 # time step, 30 min times 60 seconds/min
 dx = zmax/nx # spatial step
 
-nyear = 1
-nt = nyear * 365* 24 * 60 * 60 # as.double(max(wQ$dt)) # maximum simulation length
+# nt = 10  * 24 * 60 * 60
 
-## area and depth values of our lake 
-hyps <- read_csv('bc/LakeEnsemblR_bathymetry_standard.csv')
-area = approx(hyps$Depth_meter,hyps$Area_meterSquared,seq(1,nx*dx, 
-                                                          length.out= nx))$y
-area[which.min(area)] <- 1e-2
-depth = depth= seq(1,nx*dx, length.out = nx)
+# area and depth values of our lake 
+area = seq(-350,-1e-1, length.out = nx) * (-1)
+depth = seq(0,nx, length.out = nx)
 
 ## function to calculate density from temperature
 calc_dens <-function(wtemp){
@@ -72,16 +69,10 @@ calc_dens <-function(wtemp){
   return(dens)
 }
 
-## here we define our initial profile
-obs <- read_csv('bc/obs.txt')
-init.df <- obs %>% 
-  filter(datetime == min(datetime)) %>%
-  arrange(Depth_meter)
-if (max(depth) > max(init.df$Depth_meter)){
-  init.df <- rbind(init.df, init.df[nrow(init.df),])
-  init.df$Depth_meter[nrow(init.df)] <- max(depth)
-}
-u = approx(init.df$Depth_meter, init.df$Water_Temperature_celsius,
+# initial water temperature profile
+init.df <- read.csv('bc/initialprofile.txt') %>%
+  arrange(depth_m)
+u = approx(init.df$depth_m, init.df$temp_c,
            seq(0, nx * dx, length.out= nx))$y
 
 rho = calc_dens(u)
@@ -106,35 +97,55 @@ kz = eddy_diffusivity(rho, depth, 9.81, 998.2) / 86400# 1e4
 
 ## atmospheric boundary conditions
 ## create daily meteorological variables
-meteo <- read_csv('bc/LakeEnsemblR_meteo_standard.csv')
-# daily_meteo <-  meteo %>%
-#   mutate(date = as.Date(datetime)) %>%
-#   group_by(date) %>%
-#   summarise_all(mean)
-daily_meteo <- meteo
-daily_meteo$date = daily_meteo$datetime
-daily_meteo$Cloud_Cover <- gotmtools::calc_cc(date = as.POSIXct(daily_meteo$date),
-                     airt = daily_meteo$Air_Temperature_celsius,
-                     relh = daily_meteo$Relative_Humidity_percent,
-                     swr = daily_meteo$Shortwave_Radiation_Downwelling_wattPerMeterSquared,
+air.df <- read.csv('bc/Ames_weather_station.csv')
+airT = data.frame('time' = as.POSIXct( air.df$valid[which(!is.na(as.double(air.df$tmpc)))], format = '%m/%d/%Y %H:%M'),
+                  'atr' = as.double(na.omit(as.double(air.df$tmpc))) ,
+                  'dtr' = as.double(na.omit(as.double(air.df$tmpc))) - ((100 - as.double(air.df$relh[which(!is.na(as.double(air.df$tmpc)))]))/5.),
+                  'relhum' = as.double(na.omit(as.double(air.df$relh))))
+airT$ea <- (101.325 * exp(13.3185 * (1 - (373.15 / (airT$atr + 273.15))) -
+                            1.976 * (1 - (373.15 / (airT$atr  + 273.15)))**2 -
+                            0.6445 * (1 - (373.15 / (airT$atr  + 273.15)))**3 -
+                            0.1229 * (1 - (373.15 / (airT$atr  + 273.15)))**4)) *airT$relhum /100
+airT$dt <- as.POSIXct(airT$time) - (as.POSIXct(airT$time)[1]) + 1
+
+met.df <- read.csv('bc/weather_station_ponds.csv')
+wQ = data.frame('time' = as.POSIXct(met.df$date_time, format = '%m/%d/%Y %H:%M'),
+                'Jsw' = met.df$par/2 , #/4.6, PAR is 50% of total short-wave
+                'Uw' = met.df$wind_speed)
+
+minDates <- which(!is.na(match(wQ$time, airT$time)))
+maxDates <- match(wQ$time, airT$time)[which(!is.na(match(wQ$time, airT$time)))]
+
+startDate <- airT$time[maxDates[1]]
+
+airT = airT %>%
+  filter(time >= airT$time[maxDates[1]] & time <= airT$time[maxDates[length(maxDates)]])
+wQ = wQ %>%
+  filter(time >= wQ$time[minDates[1]] & time <= wQ$time[minDates[length(minDates)]])
+
+airT$Cloud_Cover <- gotmtools::calc_cc(date = as.POSIXct(airT$time),
+                     airt = airT$atr,
+                     relh = airT$relhum,
+                     swr = approx(wQ$time, wQ$Jsw, airT$time)$y,
                      lat = 43, lon = -89.41,
-                     elev = 258)
-daily_meteo$dt <- as.POSIXct(daily_meteo$date) - (as.POSIXct(daily_meteo$date)[1]) + 1
-daily_meteo$ea <- (daily_meteo$Relative_Humidity_percent * (4.596 * exp((17.27*(daily_meteo$Air_Temperature_celsius))/
-                                                                          (237.3 + (daily_meteo$Air_Temperature_celsius) )))/100)
-daily_meteo$ea <- (101.325 * exp(13.3185 * (1 - (373.15 / (daily_meteo$Air_Temperature_celsius + 273.15))) -
-                1.976 * (1 - (373.15 / (daily_meteo$Air_Temperature_celsius + 273.15)))**2 -
-                0.6445 * (1 - (373.15 / (daily_meteo$Air_Temperature_celsius + 273.15)))**3 -
-                0.1229 * (1 - (373.15 / (daily_meteo$Air_Temperature_celsius + 273.15)))**4)) *daily_meteo$Relative_Humidity_percent/100
+                     elev =  mean(air.df$elevation))
+airT$lw <- gotmtools::calc_in_lwr(cc = airT$Cloud_Cover,
+                                  airt = airT$atr,
+                                  relh = airT$relhum)
+airT$Pa = 100000
+
+airT$dt <- as.POSIXct(airT$time) - (as.POSIXct(airT$time)[1]) + 1
+wQ$dt <- as.POSIXct(wQ$time) - (as.POSIXct(wQ$time)[1]) + 1
+
 
 ## linearization of driver data, so model can have dynamic step
-Jsw <- approxfun(x = daily_meteo$dt, y = daily_meteo$Shortwave_Radiation_Downwelling_wattPerMeterSquared, method = "linear", rule = 2)
-Jlw <- approxfun(x = daily_meteo$dt, y = daily_meteo$Longwave_Radiation_Downwelling_wattPerMeterSquared, method = "linear", rule = 2)
-Tair <- approxfun(x = daily_meteo$dt, y = daily_meteo$Air_Temperature_celsius, method = "linear", rule = 2)
-ea <- approxfun(x = daily_meteo$dt, y = daily_meteo$ea, method = "linear", rule = 2)
-Uw <- approxfun(x = daily_meteo$dt, y = daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond, method = "linear", rule = 2)
-CC <- approxfun(x = daily_meteo$dt, y = daily_meteo$Cloud_Cover, method = "linear", rule = 2)
-Pa <- approxfun(x = daily_meteo$dt, y = daily_meteo$Surface_Level_Barometric_Pressure_pascal, method = "linear", rule = 2)
+Jsw <- approxfun(x = wQ$dt, y = wQ$Jsw, method = "linear", rule = 2)
+Jlw <- approxfun(x = airT$dt, y = airT$lw, method = "linear", rule = 2)
+Tair <- approxfun(x = airT$dt, y = airT$atr, method = "linear", rule = 2)
+ea <- approxfun(x = airT$dt, y = airT$ea, method = "linear", rule = 2)
+Uw <- approxfun(x = wQ$dt, y = wQ$Uw, method = "linear", rule = 2)
+CC <- approxfun(x = airT$dt, y = airT$Cloud_Cover, method = "linear", rule = 2)
+Pa <- approxfun(x = airT$dt, y = airT$Pa, method = "linear", rule = 2)
 
 ## additional parameters to run the model
 # meteorology
@@ -158,6 +169,25 @@ emissivity = 0.97
 sigma = 5.67 * 10^(-8)
 p2 = 1
 B = 0.61
+
+# macrophyte
+macro <- read_csv('bc/ModelTest_MacrophyteSummary.csv')
+macroheight <- mean(macro$stand_height_m)
+macrobiomass <- mean(macro$biomass_gDWperM3, na.rm = T)
+# vertical heating
+reflect <- 0.6 # fraction of reflected solar radiation
+infra = 0.3 # fraction infrared radiation
+kd = 0.1# 1.0 #0.2 # light attenuation coefficient
+km = 0.06 #0.4 # specific light attenuation coefficient for macrophytes
+P = macrobiomass # macrophyte biomass per unit volume in gDW m-3, e.g. 100
+
+# dissipative turbulent energy by macrophytes
+Cd = 1.0 # plant form drag coefficient
+ahat = 0.4 # plant surface area per unit volume
+Hmacrophytes <- seq(dx, zmax, length.out = nx) 
+Hmacrophytes <- ifelse(Hmacrophytes < ((max(Hmacrophytes) - macroheight)), 0, 1) #c(rep(0,2),rep(1,8)) # height of macrophytes (abundance)
+rho_mp = 70 # biomass density
+
 longwave <- function(emissivity, Jlw){  # longwave radiation into 
   # the lake
   lw = emissivity * Jlw
@@ -183,7 +213,7 @@ latent <- function(Tair, Twater, Uw, p2, pa, ea){ # evaporation / latent heat
   fu = 4.4 + 1.82 * Uw + 0.26 *(Twater - Tair)
   fw = 0.61 * (1 + 10^(-6) * Pressure * (4.5 + 6 * 10^(-5) * Twater**2))
   ew = fw * 10 * ((0.7859+0.03477* Twater)/(1+0.00412* Twater))
-  latent = fu * p2 * (ew - ea* 1.33) * 1/5
+  latent = fu * p2 * (ew - ea* 1.33) 
   return((-1) * latent)
 }
 
@@ -191,6 +221,10 @@ latent <- function(Tair, Twater, Uw, p2, pa, ea){ # evaporation / latent heat
 plot( u, seq(0, nx * dx, length.out=(nx)),  
       ylim = rev(range(seq(0, dx * nx, length.out=(nx)))), xlim = c(0,35), 
       type ='l');
+
+ice = FALSE
+Hi= 0
+nt = as.double(max(airT$dt)) # maximum simulation length
 
 um <- matrix(NA, ncol = floor(nt/dt), nrow = nx)
 kzm <- matrix(NA, ncol = floor(nt/dt), nrow = nx)
@@ -206,8 +240,6 @@ therm.z <- rep(NA, length = floor(nt/dt))
 mix.z <- rep(NA, length = floor(nt/dt))
 Him <- rep(NA, length = floor(nt/dt))
 
-ice = FALSE
-Hi= 0
 ## modeling code for vertical 1D mixing and heat transport
 for (n in 1:floor(nt/dt)){  #iterate through time
   print(paste0(round(n*100/floor(nt/dt),3),' %'))
@@ -231,7 +263,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   
   # heat addition over depth
   H = (1- reflect) * (1- infra) * (Jsw(n * dt))  * #
-    exp(-(kd ) *seq(dx,nx*dx,length.out=nx)) 
+    exp(-(kd + km * P) *seq(dx,nx*dx,length.out=nx)) 
 
   ## (1) DIFFUSION
   # surface layer
@@ -277,12 +309,16 @@ for (n in 1:floor(nt/dt)){  #iterate through time
       PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx)
       # PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  * 
                  # abs(calc_dens(u[dep+1])- calc_dens(u[dep])))
+      DKE = Hmacrophytes[dep]*(rho_mp* ahat * Cd) *Uw(n * dt)^3 * dt  *dx
     } else {
       PEprior = PE
       PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx +
                  PEprior)
       # PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  * 
                  # abs(calc_dens(u[dep+1])- calc_dens(u[dep]))) + PEprior
+      DKEprior = DKE
+      DKE = Hmacrophytes[dep]*(rho_mp * ahat * Cd) *Uw(n * dt)^3 * dt  *dx + DKEprior
+      KE = KE - DKE
     }
       if (PE > KE){
         maxdep = dep
@@ -380,11 +416,24 @@ for (n in 1:floor(nt/dt)){  #iterate through time
 str(um)
 ## water temperature time series at different depths
 plot(seq(1, ncol(um))*dt/24/3600, um[1,], col = 'red', type = 'l', 
-     xlab = 'Time (d)', ylab='Temperature (degC)', ylim=c(-1,35), lwd = 2)
+     xlab = 'Time (d)', ylab='Temperature (degC)', ylim=c(17,35), lwd = 2)
 for (i in 2:nx){
   lines(seq(1, ncol(um))*dt/24/3600, um[i,], col = sample(col_vector,1), 
         lty = 'dashed',lwd =2)
 }
+
+# schmidt stability plot
+time =  startDate + seq(1, ncol(um))*dt#/24/3600
+df <- data.frame(cbind(time, t(um)) )
+colnames(df) <- c("datetime", as.character(paste0('wtr_',seq(1,nrow(um))*dx)))
+df$datetime <- time
+df.h <- data.frame('depths' = depth, 'areas' = area)
+SI <- rLakeAnalyzer::ts.schmidt.stability(wtr = df, bathy = df.h)
+
+ggplot(SI, aes(datetime, schmidt.stability)) +
+  geom_line() +
+  ylab('Schmidt Stability (J/m2') + xlab('')+
+  theme_minimal()
 
 # ice thickness (direct model output)
 plot(seq(1, ncol(um))*dt/24/3600, Him, type = 'l', 
@@ -479,7 +528,7 @@ m.df.n2$time <- time
 
 g1 <- ggplot(m.df, aes(as.numeric(time), as.numeric(variable))) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
-  scale_fill_gradientn(limits = c(-2,35),
+  scale_fill_gradientn(limits = c(15,35),
                          colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
   theme_minimal()  +xlab('Time') +
   ylab('Depth') +
