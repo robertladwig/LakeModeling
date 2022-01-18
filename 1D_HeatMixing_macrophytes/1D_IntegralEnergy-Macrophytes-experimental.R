@@ -24,12 +24,12 @@
 #' https://www.tandfonline.com/doi/pdf/10.1080/07438140409354159
 #' 
 #' Convective overturn algorithm is taken from Saloranta & Andersen (2007) 
-#' MyLake—A multi-year lake simulation model code suitable for uncertainty 
+#' MyLakeâA multi-year lake simulation model code suitable for uncertainty 
 #' and sensitivity analysis simulations. Ecological Modeling
 #' https://doi.org/10.1016/j.ecolmodel.2007.03.018 
 #' 
 #' Ice formation and growth/decay code is taken from Saloranta & Andersen (2007) 
-#' MyLake—A multi-year lake simulation model code suitable for uncertainty 
+#' MyLakeâA multi-year lake simulation model code suitable for uncertainty 
 #' and sensitivity analysis simulations. Ecological Modeling
 #' https://doi.org/10.1016/j.ecolmodel.2007.03.018 
 
@@ -432,8 +432,29 @@ SI <- rLakeAnalyzer::ts.schmidt.stability(wtr = df, bathy = df.h)
 
 ggplot(SI, aes(datetime, schmidt.stability)) +
   geom_line() +
-  ylab('Schmidt Stability (J/m2') + xlab('')+
+  ylab('Schmidt Stability (J/m2)') + xlab('')+
   theme_minimal()
+# lake number
+df.u <- data.frame('datetime' = df$datetime,
+                   'wind' = approx(wQ$time, wQ$Uw, df$datetime)$y)
+LN <- rLakeAnalyzer::ts.lake.number(wtr = df, wnd = df.u,
+                                    wnd.height = 10,bathy = df.h)
+
+ggplot(LN, aes(datetime, (lake.number))) +
+  geom_line() +
+  scale_y_continuous(trans='log10') +
+  ylab('log10 Lake Number ()') + xlab('')+
+  theme_minimal()
+
+g.stab <- ggplot(LN, aes(datetime, (lake.number))) +
+  geom_line() +
+  ylab('log10 Lake Number ()') + xlab('')+
+  geom_line(data = SI, aes(y = schmidt.stability*1000 ),
+            linetype = 2, col = 'blue') +
+  scale_y_continuous(trans='log10',
+    sec.axis = sec_axis(trans = ~ . /1000,
+                        name = "Schmidt Stability (J/m2)")) +
+  theme_minimal(); g.stab
 
 # ice thickness (direct model output)
 plot(seq(1, ncol(um))*dt/24/3600, Him, type = 'l', 
@@ -512,21 +533,21 @@ ggplot2::ggplot(df.m.m) +
 ## contour plot of water temperature
 time =  seq(1, ncol(um))*dt/24/3600
 df <- data.frame(cbind(time, t(um)) )
-colnames(df) <- c("time", as.character(paste0(seq(1,nrow(um)))))
+colnames(df) <- c("time", as.character(paste0(seq(1,nrow(um))*dx)))
 m.df <- reshape2::melt(df, "time")
 m.df$time <- time
 
 df.kz <- data.frame(cbind(time, t(kzm)) )
-colnames(df.kz) <- c("time", as.character(paste0(seq(1,nrow(kzm)))))
+colnames(df.kz) <- c("time", as.character(paste0(seq(1,nrow(kzm))*dx)))
 m.df.kz <- reshape2::melt(df.kz, "time")
 m.df.kz$time <- time
 
 df.n2 <- data.frame(cbind(time, t(n2m)) )
-colnames(df.n2) <- c("time", as.character(paste0(seq(1,nrow(n2m)))))
+colnames(df.n2) <- c("time", as.character(paste0(seq(1,nrow(n2m))*dx)))
 m.df.n2 <- reshape2::melt(df.n2, "time")
 m.df.n2$time <- time
 
-g1 <- ggplot(m.df, aes(as.numeric(time), as.numeric(variable))) +
+g1 <- ggplot(m.df, aes(as.numeric(time), as.numeric(as.character(variable)))) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
   scale_fill_gradientn(limits = c(15,35),
                          colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
@@ -534,7 +555,7 @@ g1 <- ggplot(m.df, aes(as.numeric(time), as.numeric(variable))) +
   ylab('Depth') +
   labs(fill = 'Temp [degC]')+
   scale_y_reverse() 
-g2 <- ggplot(m.df.kz, aes(as.numeric(time), as.numeric(variable))) +
+g2 <- ggplot(m.df.kz, aes(as.numeric(time), as.numeric(as.character(variable)))) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
   scale_fill_gradientn(#limits = c(-20,35),
                        colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
@@ -542,7 +563,7 @@ g2 <- ggplot(m.df.kz, aes(as.numeric(time), as.numeric(variable))) +
   ylab('Depth') +
   labs(fill = 'Diffusion [m2/s]')+
   scale_y_reverse() 
-g3 <- ggplot(m.df.n2, aes(as.numeric(time), as.numeric(variable))) +
+g3 <- ggplot(m.df.n2, aes(as.numeric(time), as.numeric(as.character(variable)))) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
   scale_fill_gradientn(#limits = c(-20,35),
                        colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
@@ -550,7 +571,7 @@ g3 <- ggplot(m.df.n2, aes(as.numeric(time), as.numeric(variable))) +
   ylab('Depth') +
   labs(fill = 'N2 [s-2]')+
   scale_y_reverse() 
-g <- g1 / g2 / g3; g
+g <- g1 / g2 / g3 / g.stab; g
 ggsave(filename = 'heatmap.png',plot = g, width = 15, height = 8, units = 'in')
 
 
