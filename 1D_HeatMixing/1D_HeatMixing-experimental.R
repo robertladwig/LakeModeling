@@ -54,7 +54,7 @@ nx = 25 # number of layers we will have
 dt = 3600 # 24 hours times 60 min/hour times 60 seconds/min
 dx = zmax/nx # spatial step
 
-nyear = 1
+nyear = 2
 nt = nyear * 365* 24 * 60 * 60 # as.double(max(wQ$dt)) # maximum simulation length
 
 ## area and depth values of our lake 
@@ -158,9 +158,17 @@ emissivity = 0.97
 sigma = 5.67 * 10^(-8)
 p2 = 1
 B = 0.61
-longwave <- function(emissivity, Jlw){  # longwave radiation into 
+# longwave <- function(emissivity, Jlw){  # longwave radiation into 
+#   # the lake
+#   lw = emissivity * Jlw
+#   return(lw)
+# }
+longwave <- function(cc, sigma, Tair, ea, emissivity, Jlw){  # longwave radiation into 
   # the lake
-  lw = emissivity * Jlw
+  Tair = Tair + 273.15
+  p <- (1.33 * ea/Tair)
+  Ea <- 1.24 * (1 + 0.17 * cc**2) * p**(1/7)
+  lw <- emissivity * Ea *sigma * Tair**4
   return(lw)
 }
 backscattering <- function(emissivity, sigma, Twater){ # backscattering longwave 
@@ -183,7 +191,7 @@ latent <- function(Tair, Twater, Uw, p2, pa, ea){ # evaporation / latent heat
   fu = 4.4 + 1.82 * Uw + 0.26 *(Twater - Tair)
   fw = 0.61 * (1 + 10^(-6) * Pressure * (4.5 + 6 * 10^(-5) * Twater**2))
   ew = fw * 10 * ((0.7859+0.03477* Twater)/(1+0.00412* Twater))
-  latent = fu * p2 * (ew - ea* 1.33) * 1/5
+  latent = fu * p2 * (ew - ea * 1.33) * 1/6
   return((-1) * latent)
 }
 
@@ -224,7 +232,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   kzm[, n] <- kzn
   
   # surface heat flux
-  Q <- (absorp * Jsw(n * dt) + longwave(emissivity = emissivity, Jlw = Jlw(n * dt)) +
+  Q <- (absorp * Jsw(n * dt) + longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt)) + #longwave(emissivity = emissivity, Jlw = Jlw(n * dt)) +
           backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) +
           latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) + 
           sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt))) 
@@ -241,7 +249,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   
  Hts[n] <-  Q *  area[1]/(area[1]*dx)*1/(4181 * calc_dens(un[1]) ) # append(Hts, Q *  area[1]/(area[1]*dx)*1/(4181 * calc_dens(un[1]) ))
  Swf[n] <-  absorp * Jsw(n * dt) # append(Swf, 0.3 * Jsw(n * dt))
- Lwf[n] <-  longwave(emissivity = emissivity, Jlw = Jlw(n * dt))  #append(Lwf, longwave(emissivity = emissivity, Jlw = Jlw(n * dt)) )
+ Lwf[n] <-  longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt))#longwave(emissivity = emissivity, Jlw = Jlw(n * dt))  #append(Lwf, longwave(emissivity = emissivity, Jlw = Jlw(n * dt)) )
  BLwf[n] <-  backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) #append(BLwf, backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1])) 
  Lf[n] <- latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) #append(Lf, latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) )
  Sf[n] <- sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)) #append(Sf, sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)))
@@ -345,7 +353,8 @@ for (n in 1:floor(nt/dt)){  #iterate through time
     } else {
       if (Tair(n*dt) > 0){
         Tice <- 0
-        Hi = Hi -max(c(0, dt*(((1-0.4)*Jsw(n * dt))+(backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) +
+        Hi = Hi -max(c(0, dt*(((1-0.4)*Jsw(n * dt))+(longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt)) +
+                                                      backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) +
                                                       latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) + 
                                                       sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt))) )/(1000*333500)))
       } else {

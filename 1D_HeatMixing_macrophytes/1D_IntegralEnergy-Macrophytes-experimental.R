@@ -50,7 +50,7 @@ col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors,
                            rownames(qual_col_pals)))
 
 ## lake configurations
-zmax = 1.7
+zmax = 2#1.7
 nx = 10 # number of layers we will have
 dt = 3600 # time step, 30 min times 60 seconds/min
 dx = zmax/nx # spatial step
@@ -172,25 +172,39 @@ B = 0.61
 
 # macrophyte
 macro <- read_csv('bc/ModelTest_MacrophyteSummary.csv')
-macroheight <- mean(macro$stand_height_m)
-macrobiomass <- mean(macro$biomass_gDWperM3, na.rm = T)
+macro$dt <- ((macro$doy) - ((macro$doy)[1]) + 1)* 86400
+macro$dt[1] = 1
+# macroheight <- mean(macro$stand_height_m)
+# macrobiomass <- mean(macro$biomass_gDWperM3, na.rm = T)
+
+# macro$stand_height_m <- mean(macro$stand_height_m)
+# macro$biomass_gDWperM3 <- mean(macro$biomass_gDWperM3, na.rm = T)
+
+macroheight <- approxfun(x = macro$dt, y = macro$stand_height_m, method = "linear", rule = 2)
+macrobiomss <- approxfun(x = macro$dt, y = macro$biomass_gDWperM3, method = "linear", rule = 2)
+
 # vertical heating
 reflect <- 0.6 # fraction of reflected solar radiation
 infra = 0.3 # fraction infrared radiation
 kd = 0.1# 1.0 #0.2 # light attenuation coefficient
-km = 0.06 #0.4 # specific light attenuation coefficient for macrophytes
-P = macrobiomass # macrophyte biomass per unit volume in gDW m-3, e.g. 100
+km = 0.06#0.06 #0.4 # specific light attenuation coefficient for macrophytes
+# P = macrobiomass # macrophyte biomass per unit volume in gDW m-3, e.g. 100
 
 # dissipative turbulent energy by macrophytes
-Cd = 1.0 # plant form drag coefficient
-ahat = 0.4 # plant surface area per unit volume
-Hmacrophytes <- seq(dx, zmax, length.out = nx) 
-Hmacrophytes <- ifelse(Hmacrophytes < ((max(Hmacrophytes) - macroheight)), 0, 1) #c(rep(0,2),rep(1,8)) # height of macrophytes (abundance)
-rho_mp = 70 # biomass density
+Cd = 1.0 #1.0 # plant form drag coefficient
+ahat = 0.04#0.4 # 0.4 plant surface area per unit volume
+# Hmacrophytes <- seq(dx, zmax, length.out = nx) 
+# Hmacrophytes <- ifelse(Hmacrophytes < ((max(Hmacrophytes) - macroheight)), 0, 1) #c(rep(0,2),rep(1,8)) # height of macrophytes (abundance)
+rho_mp = 1.0 # 70 #70 # biomass density
 
-longwave <- function(emissivity, Jlw){  # longwave radiation into 
-  # the lake
-  lw = emissivity * Jlw
+# longwave <- function(cc, sigma, Tair, ea, emissivity, Jlw){  # longwave radiation into
+#   lw = emissivity * Jlw 
+#   return(lw)
+# }
+longwave <- function(cc, sigma, Tair, ea, emissivity, Jlw){  # longwave radiation into
+  Tair = Tair + 273.15
+  Ea <- 1.24 * (1 + 0.17 * cc**2) * (ea/Tair)^(1/7)
+  lw <- emissivity * Ea *sigma * Tair**4
   return(lw)
 }
 backscattering <- function(emissivity, sigma, Twater){ # backscattering longwave 
@@ -213,7 +227,7 @@ latent <- function(Tair, Twater, Uw, p2, pa, ea){ # evaporation / latent heat
   fu = 4.4 + 1.82 * Uw + 0.26 *(Twater - Tair)
   fw = 0.61 * (1 + 10^(-6) * Pressure * (4.5 + 6 * 10^(-5) * Twater**2))
   ew = fw * 10 * ((0.7859+0.03477* Twater)/(1+0.00412* Twater))
-  latent = fu * p2 * (ew - ea* 1.33) 
+  latent = fu * p2 * (ew - ea) 
   return((-1) * latent)
 }
 
@@ -239,6 +253,7 @@ mix <- rep(NA, length = floor(nt/dt))
 therm.z <- rep(NA, length = floor(nt/dt))
 mix.z <- rep(NA, length = floor(nt/dt))
 Him <- rep(NA, length = floor(nt/dt))
+macroz <- rep(NA, length = floor(nt/dt))
 
 ## modeling code for vertical 1D mixing and heat transport
 for (n in 1:floor(nt/dt)){  #iterate through time
@@ -256,12 +271,13 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   kzm[, n] <- kzn
   
   # surface heat flux
-  Q <- (absorp * Jsw(n * dt) + longwave(emissivity = emissivity, Jlw = Jlw(n * dt)) +
+  Q <- (absorp * Jsw(n * dt) + longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt)) + # longwave(emissivity = emissivity, Jlw = Jlw(n * dt)) +
           backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) +
           latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) + 
           sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt))) 
   
   # heat addition over depth
+  P = macrobiomss(n * dt)
   H = (1- reflect) * (1- infra) * (Jsw(n * dt))  * #
     exp(-(kd + km * P) *seq(dx,nx*dx,length.out=nx)) 
 
@@ -273,7 +289,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   
  Hts[n] <-  Q *  area[1]/(area[1]*dx)*1/(4181 * calc_dens(un[1]) ) # append(Hts, Q *  area[1]/(area[1]*dx)*1/(4181 * calc_dens(un[1]) ))
  Swf[n] <-  absorp * Jsw(n * dt) # append(Swf, 0.3 * Jsw(n * dt))
- Lwf[n] <-  longwave(emissivity = emissivity, Jlw = Jlw(n * dt))  #append(Lwf, longwave(emissivity = emissivity, Jlw = Jlw(n * dt)) )
+ Lwf[n] <-  longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt))# longwave(emissivity = emissivity, Jlw = Jlw(n * dt))  #append(Lwf, longwave(emissivity = emissivity, Jlw = Jlw(n * dt)) )
  BLwf[n] <-  backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) #append(BLwf, backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1])) 
  Lf[n] <- latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) #append(Lf, latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) )
  Sf[n] <- sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)) #append(Sf, sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)))
@@ -303,6 +319,11 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   shear = sqrt((c10 * calc_dens(un[1]))/1.225) *  Uw(n * dt)# shear velocity
   # coefficient times wind velocity squared
   KE = shear *  tau * dt # kinetic energy as function of wind
+  
+  Hmacrophytes <- seq(dx, zmax, length.out = nx) 
+  Hmacrophytes <- ifelse(Hmacrophytes < ((max(Hmacrophytes) - macroheight(n*dt) )), 0, 1) #c(rep(0,2),rep(1,8)) # height of macrophytes (abundance)
+  macroz[n] = macroheight(n *dt)
+  
   maxdep = 1
   for (dep in 1:(nx-1)){
     if (dep == 1){
@@ -398,7 +419,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   } else if (ice == TRUE & Hi > 0) {
         if (Tair(n*dt) > 0){
           Tice <- 0
-          Hi = Hi -max(c(0, dt*(((1-0.2)*Jsw(n * dt))+(backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) +
+          Hi = Hi -max(c(0, dt*(((1-0.2)*Jsw(n * dt))+(longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt)) + backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) +
                                                     latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) + 
                                                     sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt))) )/(1000*333500)))
         } else {
@@ -416,13 +437,13 @@ for (n in 1:floor(nt/dt)){  #iterate through time
 str(um)
 ## water temperature time series at different depths
 plot(seq(1, ncol(um))*dt/24/3600, um[1,], col = 'red', type = 'l', 
-     xlab = 'Time (d)', ylab='Temperature (degC)', ylim=c(17,35), lwd = 2)
+     xlab = 'Time (d)', ylab='Temperature (degC)', ylim=c(17,40), lwd = 2)
 for (i in 2:nx){
   lines(seq(1, ncol(um))*dt/24/3600, um[i,], col = sample(col_vector,1), 
         lty = 'dashed',lwd =2)
 }
 
-# schmidt stability plot
+# schmidt stability (processed model output)
 time =  startDate + seq(1, ncol(um))*dt#/24/3600
 df <- data.frame(cbind(time, t(um)) )
 colnames(df) <- c("datetime", as.character(paste0('wtr_',seq(1,nrow(um))*dx)))
@@ -434,7 +455,8 @@ ggplot(SI, aes(datetime, schmidt.stability)) +
   geom_line() +
   ylab('Schmidt Stability (J/m2)') + xlab('')+
   theme_minimal()
-# lake number
+
+# lake number (processed model output)
 df.u <- data.frame('datetime' = df$datetime,
                    'wind' = approx(wQ$time, wQ$Uw, df$datetime)$y)
 LN <- rLakeAnalyzer::ts.lake.number(wtr = df, wnd = df.u,
@@ -454,12 +476,22 @@ g.stab <- ggplot(LN, aes(datetime, (lake.number))) +
   scale_y_continuous(trans='log10',
     sec.axis = sec_axis(trans = ~ . /1000,
                         name = "Schmidt Stability (J/m2)")) +
-  theme_minimal(); g.stab
+  theme_minimal()
 
 # ice thickness (direct model output)
 plot(seq(1, ncol(um))*dt/24/3600, Him, type = 'l', 
      col = 'red', xlab = 'Time', 
      ylab= 'Ice thickness (m)', lwd= 3)
+
+# macrophyte height (direct model output)
+plot(seq(1, ncol(um))*dt/24/3600, macroz, type = 'l', 
+     col = 'red', xlab = 'Time', 
+     ylab= 'Macrophyte height (m)', lwd= 3)
+g.macro <- ggplot(data.frame('time' = time,
+                             'macro' =macroz))+
+  geom_line(aes(time, macro)) +
+  xlab('') + ylab('Macrophyte height (m)')+
+  theme_minimal(); g.macro
  
 ## surface mixed layer depth (direct model output)
 therm.z.roll = zoo::rollmean(therm.z, 14)
@@ -571,7 +603,88 @@ g3 <- ggplot(m.df.n2, aes(as.numeric(time), as.numeric(as.character(variable))))
   ylab('Depth') +
   labs(fill = 'N2 [s-2]')+
   scale_y_reverse() 
-g <- g1 / g2 / g3 / g.stab; g
+g <- g1 / g2 / g3 / g.stab / g.macro; g
 ggsave(filename = 'heatmap.png',plot = g, width = 15, height = 8, units = 'in')
 
 
+## model goodness
+obs <- read.csv('bc/temp_profiles_2020.csv')
+obs <- obs %>%
+  filter(pond == 'F') %>%
+  select(datetime, temp_depth_m, temp_c)
+
+df.sim <- df
+colnames(df.sim) <- c("datetime", as.character(paste0('temp_c.',seq(1,nrow(um))*dx)))
+df.sim$datetime <-   startDate + seq(1, ncol(um))*dt#/24/3600
+
+# idx <- na.omit(match(as.POSIXct(df.sim$datetime), as.POSIXct(obs$datetime) ))
+idx <- (match(as.POSIXct(obs$datetime), as.POSIXct(df.sim$datetime) ))
+
+# df.sim <- df.sim[idx, ]
+obs <- obs[which(!is.na(idx)), ]
+
+deps <- seq(1,nrow(um))*dx
+if (min(unique(obs$temp_depth_m)) < min(deps)){
+  deps[which.min(deps)] <- min(unique(obs$temp_depth_m)) 
+}
+if (max(unique(obs$temp_depth_m)) > max(deps)){
+  deps[which.max(deps)] <- max(unique(obs$temp_depth_m)) 
+}
+
+df.sim.interp <- NULL
+for (i in 1:nrow(df.sim)){
+  df.sim.interp <- rbind(df.sim.interp,
+                         approx(deps, df.sim[i, -1], unique(obs$temp_depth_m))$y)
+}
+df.sim.interp <- as.data.frame(df.sim.interp)
+# df.sim.interp <- apply(df.sim[,-1], 1, function(x) approx(deps, x, unique(obs$temp_depth_m))$y)
+df.sim.interp$datetime <-   startDate + seq(1, ncol(um))*dt#/24/3600
+colnames(df.sim.interp) <- c(as.character(paste0('temp_c.',unique(obs$temp_depth_m))), 'datetime')
+
+wide.obs <- reshape(obs, idvar = "datetime", timevar = "temp_depth_m", direction = "wide")
+m.obs <- reshape2::melt(wide.obs, id = 'datetime')
+m.obs$datetime <- as.POSIXct(m.obs$datetime)
+m.obs$group <- 'obs'
+m.df.sim.interp <- reshape2::melt(df.sim.interp, id = 'datetime')
+m.df.sim.interp$group <- 'sim'
+
+# df.rmse <- merge(m.df.sim.interp, m.obs, by = c('datetime', 'variable'))
+# df.rmse %>%
+#   group_by(variable, datetime) %>%
+#   mutate(rmse = sqrt((sum(value.x-value.y)**2)/length(value.y))) %>%
+#   group_by(variable) %>%
+#   summarise(sum(rmse))
+
+rmse <- data.frame('variable' = NULL, 'fit' = NULL)
+for (i in unique(as.character(m.obs$variable))){
+  o <- m.obs
+  o$variable <- as.character(o$variable)
+  o = o %>%
+    filter(variable == i) 
+  s <- m.df.sim.interp
+  s$variable <- as.character(s$variable)
+  s = s %>%
+    filter(variable == i)
+  rmse <- rbind(rmse, data.frame('variable' = i,
+                           'fit' = sqrt((sum((o$value-s$value)**2))/nrow(o))))
+}
+
+ggplot() +
+  geom_line(data = m.obs,aes(datetime, value, col = group)) +
+  geom_line(data = m.df.sim.interp, aes(datetime, value, col = group)) +
+  # annotate(data=rmse, geom="text", x=as.POSIXct("2020-05-25 10:30:00 CDT"), y=16, label=(rmse$fit),
+           # color="red") +
+  geom_text(data=rmse, aes( as.POSIXct("2020-05-26 10:30:00 CDT"), y=17, label=round(fit,2)),                 
+            color="black", size =3) +
+  facet_wrap(~ variable) +
+  xlab('') + ylab('Temp. (deg C)')+
+  theme_bw()
+ggsave(filename = 'fieldcomp.png', width = 15, height = 8, units = 'in')
+
+
+
+
+
+
+
+               
