@@ -54,7 +54,7 @@ nx = 25 # number of layers we will have
 dt = 3600 # 24 hours times 60 min/hour times 60 seconds/min
 dx = zmax/nx # spatial step
 
-nyear = 2
+nyear = 1
 nt = nyear * 365* 24 * 60 * 60 # as.double(max(wQ$dt)) # maximum simulation length
 
 ## area and depth values of our lake 
@@ -63,6 +63,8 @@ area = approx(hyps$Depth_meter,hyps$Area_meterSquared,seq(1,nx*dx,
                                                           length.out= nx))$y
 area[which.min(area)] <- 1e-2
 depth = depth= seq(1,nx*dx, length.out = nx)
+volume <- c(rev(diff(pracma::cumtrapz(area, depth))*(-1)),0)
+volume[which(volume == 0)] = min(volume[-which(volume == 0)])
 
 ## function to calculate density from temperature
 calc_dens <-function(wtemp){
@@ -127,6 +129,11 @@ daily_meteo$ea <- (101.325 * exp(13.3185 * (1 - (373.15 / (daily_meteo$Air_Tempe
                 0.6445 * (1 - (373.15 / (daily_meteo$Air_Temperature_celsius + 273.15)))**3 -
                 0.1229 * (1 - (373.15 / (daily_meteo$Air_Temperature_celsius + 273.15)))**4)) *daily_meteo$Relative_Humidity_percent/100
 
+
+daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond <-
+  daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond * 1
+Cd <- 0.0013
+
 ## linearization of driver data, so model can have dynamic step
 Jsw <- approxfun(x = daily_meteo$dt, y = daily_meteo$Shortwave_Radiation_Downwelling_wattPerMeterSquared, method = "linear", rule = 2)
 Jlw <- approxfun(x = daily_meteo$dt, y = daily_meteo$Longwave_Radiation_Downwelling_wattPerMeterSquared, method = "linear", rule = 2)
@@ -152,25 +159,23 @@ g <- 9.81  # gravity (m/s2)
 # vertical heating
 reflect <- 0.6 # fraction of reflected solar radiation
 infra = 0.3 # fraction infrared radiation
-kd = 1# 0.2# 1.0 #0.2 # light attenuation coefficient
+kd = 1 # 0.2# 1.0 #0.2 # light attenuation coefficient
 
 emissivity = 0.97
 sigma = 5.67 * 10^(-8)
 p2 = 1
 B = 0.61
-# longwave <- function(emissivity, Jlw){  # longwave radiation into 
-#   # the lake
-#   lw = emissivity * Jlw
-#   return(lw)
-# }
-longwave <- function(cc, sigma, Tair, ea, emissivity, Jlw){  # longwave radiation into 
-  # the lake
-  Tair = Tair + 273.15
-  p <- (1.33 * ea/Tair)
-  Ea <- 1.24 * (1 + 0.17 * cc**2) * p**(1/7)
-  lw <- emissivity * Ea *sigma * Tair**4
+longwave <- function(cc, sigma, Tair, ea, emissivity, Jlw){  # longwave radiation into
+  lw = emissivity * Jlw
   return(lw)
 }
+# longwave <- function(cc, sigma, Tair, ea, emissivity, Jlw){  # longwave radiation into
+#   Tair = Tair + 273.15
+#   p <- (1.33 * ea/Tair)
+#   Ea <- 1.24 * (1 + 0.17 * cc**2) * p**(1/7)
+#   lw <- emissivity * Ea *sigma * Tair**4
+#   return(lw)
+# }
 backscattering <- function(emissivity, sigma, Twater){ # backscattering longwave 
   # radiation from the lake
   Twater = Twater + 273.15
@@ -231,46 +236,80 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   }
   kzm[, n] <- kzn
   
+  ## (1) Heat addition
   # surface heat flux
   Q <- (absorp * Jsw(n * dt) + longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt)) + #longwave(emissivity = emissivity, Jlw = Jlw(n * dt)) +
           backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) +
           latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) + 
-          sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt))) 
+          sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)))  
   
   # heat addition over depth
   H = (1- reflect) * (1- infra) * (Jsw(n * dt))  * #
     exp(-(kd ) *seq(dx,nx*dx,length.out=nx)) 
 
-  ## (1) DIFFUSION
+  # add heat to all layers
+  un[1] = un[1] +    Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) * dt/area[1]
+  un <- un  + (H * area/(dx) * 1/(4184 * calc_dens(un) ))* dt/area
+  
+  # save variables for model diagnostics
+  Hts[n] <-  Q *  area[1]/(area[1]*dx)*1/(4181 * calc_dens(un[1]) ) # append(Hts, Q *  area[1]/(area[1]*dx)*1/(4181 * calc_dens(un[1]) ))
+  Swf[n] <-  absorp * Jsw(n * dt) # append(Swf, 0.3 * Jsw(n * dt))
+  Lwf[n] <-  longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt))#longwave(emissivity = emissivity, Jlw = Jlw(n * dt))  #append(Lwf, longwave(emissivity = emissivity, Jlw = Jlw(n * dt)) )
+  BLwf[n] <-  backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) #append(BLwf, backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1])) 
+  Lf[n] <- latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) #append(Lf, latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) )
+  Sf[n] <- sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)) #append(Sf, sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)))
+  
+  
+  ## (2) DIFFUSION
   # surface layer
-  u[1] = un[1] +
-     Q * area[1]/(area[1]*dx)*1/(4184 * calc_dens(un[1]) ) *dt +
-    H[1] * area[1]/(area[1]*dx) * 1/(4184 * calc_dens(un[1]) )* dt
+  # u[1] = un[1] +
+  #    Q * area[1]/(area[1]*dx)*1/(4184 * calc_dens(un[1]) ) *dt +
+  #   H[1] * area[1]/(area[1]*dx) * 1/(4184 * calc_dens(un[1]) )* dt
+  # u[1] = un[1] +
+  #   (Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) +
+  #   H[1] * area[1]/(dx) * 1/(4184 * calc_dens(un[1]) )) * dt/area[1]
+    
+  # # all other layers in between
+  # for (i in 2:(nx-1)){
+  #   # u[i] = un[i] +
+  #   #   kzn[i] * dt / dx**2 * (un[i+1] - 2 * un[i] + un[i-1]) +
+  #   #   H[i] * area[i]/(area[i]*dx) * 1/(4184 * calc_dens(un[i]) )* dt
+  #   u[i] = un[i] +
+  #     (area[i] * kzn[i] * 1 / dx**2 * (un[i+1] - 2 * un[i] + un[i-1]) +
+  #     H[i] * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ))* dt/area[i]
+  # }
+  # 
+  # # bottom layer
+  # u[nx] = un[nx] + 
+  #   H[nx] * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx]) ) * dt
   
- Hts[n] <-  Q *  area[1]/(area[1]*dx)*1/(4181 * calc_dens(un[1]) ) # append(Hts, Q *  area[1]/(area[1]*dx)*1/(4181 * calc_dens(un[1]) ))
- Swf[n] <-  absorp * Jsw(n * dt) # append(Swf, 0.3 * Jsw(n * dt))
- Lwf[n] <-  longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt))#longwave(emissivity = emissivity, Jlw = Jlw(n * dt))  #append(Lwf, longwave(emissivity = emissivity, Jlw = Jlw(n * dt)) )
- BLwf[n] <-  backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) #append(BLwf, backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1])) 
- Lf[n] <- latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) #append(Lf, latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) )
- Sf[n] <- sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)) #append(Sf, sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)))
- # 
-  # all other layers in between
-  for (i in 2:(nx-1)){
-    u[i] = un[i] + 
-      kzn[i] * dt / dx**2 * (un[i+1] - 2 * un[i] + un[i-1]) +
-      H[i] * area[i]/(area[i]*dx) * 1/(4184 * calc_dens(un[i]) )* dt
-  }
-  
-  # bottom layer
-  u[nx] = un[nx] + 
-    H[nx] * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx]) ) * dt
-  
-  ## (2) TURBULENT MIXING OF MIXED LAYER
+   j <- length(volume)
+   y <- array(0, c(j,j))
+   
+   # Linearized heat conservation equation matrix (diffusion only)
+   az <- (dt/dx) * kzn * (area / volume)                                        #coefficient for i-1
+   cz <- (dt/dx) * c(kzn[-1], NA) * (c(area[-1], NA) / volume)            #coefficient for i+1
+   bz <- 1 + az + cz                                                       #coefficient for i+1
+   #Boundary conditions, surface
+   az[1] <- 0
+   #cz(1) remains unchanged 
+   bz[1]<- 1 + az[1] + cz[1]
+   #Boundary conditions, bottom
+   #az(end) remains unchanged 
+   cz[length(cz)] <- 0
+   bz[length(bz)] <- 1 + az[length(az)] + cz[length(cz)]
+   y[0 + 1:(j - 1) * (j + 1)] <- -cz[-length(bz)]	# superdiagonal
+   y[1 + 0:(j - 1) * (j + 1)] <- bz	# diagonal
+   y[2 + 0:(j - 2) * (j + 1)] <- -az[-1] 	# subdiagonal
+   
+   u <- solve(y, un)
+ 
+  ## (3) TURBULENT MIXING OF MIXED LAYER
   # the mixed layer depth is determined for each time step by comparing kinetic 
   # energy available from wind and the potential energy required to completely 
   # mix the water column to a given depth
   Zcv <- seq(1, nx) %*% area / sum(area) # center of volume
-  tau = 1.225 * 0.0013 * Uw(n * dt)^2 # wind shear is air density times shear 
+  tau = 1.225 * Cd * Uw(n * dt)^2 # wind shear is air density times shear 
   if (Uw(n * dt) <= 15) {
     c10 = 0.0005 * sqrt(Uw(n * dt))
   } else {
@@ -302,7 +341,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   mix[n] <- KE/PE #append(mix, KE/PE)
   therm.z[n] <- maxdep #append(therm.z, maxdep)
   
-  ## (3) DENSITY INSTABILITIES
+  ## (4) DENSITY INSTABILITIES
   # convective overturn: Convective mixing is induced by an unstable density 
   # profile. All groups of water layers where the vertical density profile is 
   # unstable are mixed with the first stable layer below the unstable layer(s) 
@@ -336,7 +375,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   lines( u, seq(0, dx * nx, length.out=(nx)),
           ylim = rev(range(seq(0, dx * nx, length.out=(nx)))), lty = 'dashed');
   
-  ## (4) ICE FORMATION
+  ## (5) ICE FORMATION
   # according to Hostetler & Bartlein (1990): 
   # (1) ice forms when surface water temp <= 1 deg C and melts when > 1 deg
   # (2) rate of ice formation/melting is exponential function of ice thickness
@@ -384,6 +423,11 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   } else if (ice == TRUE & Hi <= 0){
     ice = FALSE 
   }
+  
+  # print(un)
+  # print(u)
+  # cat ("Press [enter] to continue")
+  # line <- readline()
 }
 
 str(um)
@@ -512,5 +556,102 @@ g3 <- ggplot(m.df.n2, aes(as.numeric(time), as.numeric(variable))) +
   scale_y_reverse() 
 g <- g1 / g2 / g3; g
 ggsave(filename = 'heatmap.png',plot = g, width = 15, height = 8, units = 'in')
+
+
+# Package ID: knb-lter-ntl.29.29 Cataloging System:https://pasta.edirepository.org.
+# Data set title: North Temperate Lakes LTER: Physical Limnology of Primary Study Lakes 1981 - current.
+
+inUrl3 <- "https://pasta.lternet.edu/package/data/eml/knb-lter-ntl/29/29/03e232a1b362900e0f059859abe8eb97"
+infile3 <- tempfile()
+download.file(inUrl3, infile3, method = "curl")
+dt1 <- read_csv(infile3, skip = 1, quote = "\"", guess_max = 1e+05, 
+                col_names = c("lakeid", "year4", "daynum", "sampledate", 
+                              "depth", "rep", "sta", "event", "wtemp", "o2", "o2sat", 
+                              "deck", "light", "frlight", "flagdepth", "flagwtemp", 
+                              "flago2", "flago2sat", "flagdeck", "flaglight", "flagfrlight"))
+dt1
+
+startDate <- daily_meteo$datetime[1]
+
+time =  startDate + seq(1, ncol(um))*dt#/24/3600
+obs <- dt1 %>%
+  filter(lakeid == 'ME') %>%
+  rename(datetime = sampledate) %>%
+  select(datetime, depth, wtemp)
+
+df.sim <- df
+colnames(df.sim) <- c("datetime", as.character(paste0('wtemp.',seq(1,nrow(um))*dx)))
+df.sim$datetime <-   startDate + seq(1, ncol(um))*dt#/24/3600
+
+# idx <- na.omit(match(as.POSIXct(df.sim$datetime), as.POSIXct(obs$datetime) ))
+idx <- (match(as.POSIXct(obs$datetime), as.POSIXct(df.sim$datetime) ))
+
+# df.sim <- df.sim[idx, ]
+obs <- obs[which(!is.na(idx)), ]
+
+idz <- which(obs$depth %in% seq(0,24,1))
+obs = obs[idz,]
+
+deps <- seq(1,nrow(um))*dx
+if (min(unique(obs$depth)) < min(deps)){
+  deps[which.min(deps)] <- min(unique(obs$depth)) 
+}
+if (max(unique(obs$depth)) > max(deps)){
+  deps[which.max(deps)] <- max(unique(obs$depth)) 
+}
+
+df.sim.interp <- NULL
+for (i in 1:nrow(df.sim)){
+  df.sim.interp <- rbind(df.sim.interp,
+                         approx(deps, df.sim[i, -1], unique(obs$depth))$y)
+}
+df.sim.interp <- as.data.frame(df.sim.interp)
+# df.sim.interp <- apply(df.sim[,-1], 1, function(x) approx(deps, x, unique(obs$temp_depth_m))$y)
+df.sim.interp$datetime <-   startDate + seq(1, ncol(um))*dt#/24/3600
+colnames(df.sim.interp) <- c(as.character(paste0('wtemp.',unique(obs$depth))), 'datetime')
+
+obs <- data.frame(obs)
+obs$depth <- factor(obs$depth)
+
+wide.obs <- reshape(obs, idvar = "datetime", timevar = "depth", direction = "wide")
+m.obs <- reshape2::melt(wide.obs, id = 'datetime')
+m.obs$datetime <- as.POSIXct(m.obs$datetime)
+m.obs$group <- 'obs'
+m.df.sim.interp <- reshape2::melt(df.sim.interp, id = 'datetime')
+m.df.sim.interp$group <- 'sim'
+
+rmse <- data.frame('variable' = NULL, 'fit' = NULL)
+for (i in unique(as.character(m.obs$variable))){
+  o <- m.obs
+  o$variable <- as.character(o$variable)
+  o = o %>%
+    filter(variable == i) 
+  s <- m.df.sim.interp
+  s$variable <- as.character(s$variable)
+  s = s %>%
+    filter(variable == i)
+  id.r <-  (match(as.POSIXct(s$datetime), as.POSIXct(o$datetime) ))
+  s <- s[which(!is.na(id.r)),]
+  rmse <- rbind(rmse, data.frame('variable' = i,
+                                 'fit' = sqrt((sum((o$value-s$value)**2))/nrow(o))))
+}
+
+m.obs$variable <-  factor(m.obs$variable, levels=paste0('wtemp.',seq(0,24,1)))
+m.df.sim.interp$variable <-  factor(m.df.sim.interp$variable, levels=paste0('wtemp.',seq(0,24,1)))
+
+ggplot() +
+  geom_line(data = m.obs,aes(datetime, value, col = group)) +
+  geom_line(data = m.df.sim.interp, aes(datetime, value, col = group)) +
+  geom_text(data=rmse, aes( as.POSIXct("2010-01-01 10:30:00 CDT"), y=17, label=round(fit,2)),                 
+            color="black", size =3) +
+  facet_wrap(~ factor(variable, level = c(paste0('wtemp.',seq(0,24,1))))) +
+  xlab('') + ylab('Temp. (deg C)')+
+  theme_bw()
+ggsave(filename = 'fieldcomp.png', width = 15, height = 8, units = 'in')
+
+
+
+
+
 
 

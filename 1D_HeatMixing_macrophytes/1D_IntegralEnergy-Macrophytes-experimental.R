@@ -58,8 +58,11 @@ dx = zmax/nx # spatial step
 # nt = 10  * 24 * 60 * 60
 
 # area and depth values of our lake 
+# area = seq(-350,-1e-1, length.out = nx) * (-1)
 area = seq(-350,-1e-1, length.out = nx) * (-1)
 depth = seq(0,nx, length.out = nx)
+volume <- c(rev(diff(pracma::cumtrapz(area, depth))*(-1)),0)
+volume[which(volume == 0)] = min(volume[-which(volume == 0)])
 
 ## function to calculate density from temperature
 calc_dens <-function(wtemp){
@@ -110,7 +113,7 @@ airT$dt <- as.POSIXct(airT$time) - (as.POSIXct(airT$time)[1]) + 1
 
 met.df <- read.csv('bc/weather_station_ponds.csv')
 wQ = data.frame('time' = as.POSIXct(met.df$date_time, format = '%m/%d/%Y %H:%M'),
-                'Jsw' = met.df$par/2 , #/4.6, PAR is 50% of total short-wave
+                'Jsw' = met.df$par * 0.58, #/4.6, PAR is 50% of total short-wave /2
                 'Uw' = met.df$wind_speed)
 
 minDates <- which(!is.na(match(wQ$time, airT$time)))
@@ -177,8 +180,8 @@ macro$dt[1] = 1
 # macroheight <- mean(macro$stand_height_m)
 # macrobiomass <- mean(macro$biomass_gDWperM3, na.rm = T)
 
-# macro$stand_height_m <- mean(macro$stand_height_m)
-# macro$biomass_gDWperM3 <- mean(macro$biomass_gDWperM3, na.rm = T)
+# macro$stand_height_m <- 0# mean(macro$stand_height_m)
+macro$biomass_gDWperM3 <- mean(macro$biomass_gDWperM3, na.rm = T)
 
 macroheight <- approxfun(x = macro$dt, y = macro$stand_height_m, method = "linear", rule = 2)
 macrobiomss <- approxfun(x = macro$dt, y = macro$biomass_gDWperM3, method = "linear", rule = 2)
@@ -187,15 +190,15 @@ macrobiomss <- approxfun(x = macro$dt, y = macro$biomass_gDWperM3, method = "lin
 reflect <- 0.6 # fraction of reflected solar radiation
 infra = 0.3 # fraction infrared radiation
 kd = 0.1# 1.0 #0.2 # light attenuation coefficient
-km = 0.06#0.06 #0.4 # specific light attenuation coefficient for macrophytes
+km = 0.04#0.06 #0.4 # specific light attenuation coefficient for macrophytes
 # P = macrobiomass # macrophyte biomass per unit volume in gDW m-3, e.g. 100
 
 # dissipative turbulent energy by macrophytes
 Cd = 1.0 #1.0 # plant form drag coefficient
-ahat = 0.04#0.4 # 0.4 plant surface area per unit volume
+ahat = 0.02#0.4 # 0.4 plant surface area per unit volume
 # Hmacrophytes <- seq(dx, zmax, length.out = nx) 
 # Hmacrophytes <- ifelse(Hmacrophytes < ((max(Hmacrophytes) - macroheight)), 0, 1) #c(rep(0,2),rep(1,8)) # height of macrophytes (abundance)
-rho_mp = 1.0 # 70 #70 # biomass density
+rho_mp = 998.0 # 70 #70 # biomass density
 
 # longwave <- function(cc, sigma, Tair, ea, emissivity, Jlw){  # longwave radiation into
 #   lw = emissivity * Jlw 
@@ -270,6 +273,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   }
   kzm[, n] <- kzn
   
+  ## (1) HEAT ADDITION
   # surface heat flux
   Q <- (absorp * Jsw(n * dt) + longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt)) + # longwave(emissivity = emissivity, Jlw = Jlw(n * dt)) +
           backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) +
@@ -280,32 +284,58 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   P = macrobiomss(n * dt)
   H = (1- reflect) * (1- infra) * (Jsw(n * dt))  * #
     exp(-(kd + km * P) *seq(dx,nx*dx,length.out=nx)) 
-
-  ## (1) DIFFUSION
-  # surface layer
-  u[1] = un[1] +
-     Q * area[1]/(area[1]*dx)*1/(4184 * calc_dens(un[1]) ) *dt +
-    H[1] * area[1]/(area[1]*dx) * 1/(4184 * calc_dens(un[1]) )* dt
   
- Hts[n] <-  Q *  area[1]/(area[1]*dx)*1/(4181 * calc_dens(un[1]) ) # append(Hts, Q *  area[1]/(area[1]*dx)*1/(4181 * calc_dens(un[1]) ))
- Swf[n] <-  absorp * Jsw(n * dt) # append(Swf, 0.3 * Jsw(n * dt))
- Lwf[n] <-  longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt))# longwave(emissivity = emissivity, Jlw = Jlw(n * dt))  #append(Lwf, longwave(emissivity = emissivity, Jlw = Jlw(n * dt)) )
- BLwf[n] <-  backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) #append(BLwf, backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1])) 
- Lf[n] <- latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) #append(Lf, latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) )
- Sf[n] <- sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)) #append(Sf, sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)))
- # 
-  # all other layers in between
-  for (i in 2:(nx-1)){
-    u[i] = un[i] + 
-      kzn[i] * dt / dx**2 * (un[i+1] - 2 * un[i] + un[i-1]) +
-      H[i] * area[i]/(area[i]*dx) * 1/(4184 * calc_dens(un[i]) )* dt
-  }
+  # add heat to all layers
+  un[1] = un[1] +    Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) * dt/area[1]
+  un <- un  + (H * area/(dx) * 1/(4184 * calc_dens(un) ))* dt/area
   
-  # bottom layer
-  u[nx] = un[nx] + 
-    H[nx] * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx]) ) * dt
+  Hts[n] <-  Q *  area[1]/(area[1]*dx)*1/(4181 * calc_dens(un[1]) ) # append(Hts, Q *  area[1]/(area[1]*dx)*1/(4181 * calc_dens(un[1]) ))
+  Swf[n] <-  absorp * Jsw(n * dt) # append(Swf, 0.3 * Jsw(n * dt))
+  Lwf[n] <-  longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt))#longwave(emissivity = emissivity, Jlw = Jlw(n * dt))  #append(Lwf, longwave(emissivity = emissivity, Jlw = Jlw(n * dt)) )
+  BLwf[n] <-  backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) #append(BLwf, backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1])) 
+  Lf[n] <- latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) #append(Lf, latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) )
+  Sf[n] <- sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)) #append(Sf, sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)))
   
-  ## (2) TURBULENT MIXING OF MIXED LAYER
+  
+  ## (2) DIFFUSION
+  # # surface layer
+  # u[1] = un[1] +
+  #    Q * area[1]/(area[1]*dx)*1/(4184 * calc_dens(un[1]) ) *dt +
+  #   H[1] * area[1]/(area[1]*dx) * 1/(4184 * calc_dens(un[1]) )* dt
+  # 
+  # # all other layers in between
+  # for (i in 2:(nx-1)){
+  #   u[i] = un[i] + 
+  #     kzn[i] * dt / dx**2 * (un[i+1] - 2 * un[i] + un[i-1]) +
+  #     H[i] * area[i]/(area[i]*dx) * 1/(4184 * calc_dens(un[i]) )* dt
+  # }
+  # 
+  # # bottom layer
+  # u[nx] = un[nx] + 
+  #   H[nx] * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx]) ) * dt
+  
+  j <- length(volume)
+  y <- array(0, c(j,j))
+  
+  # Linearized heat conservation equation matrix (diffusion only)
+  az <- (dt/dx) * kzn * (area / volume)                                        #coefficient for i-1
+  cz <- (dt/dx) * c(kzn[-1], NA) * (c(area[-1], NA) / volume)            #coefficient for i+1
+  bz <- 1 + az + cz                                                       #coefficient for i+1
+  #Boundary conditions, surface
+  az[1] <- 0
+  #cz(1) remains unchanged 
+  bz[1]<- 1 + az[1] + cz[1]
+  #Boundary conditions, bottom
+  #az(end) remains unchanged 
+  cz[length(cz)] <- 0
+  bz[length(bz)] <- 1 + az[length(az)] + cz[length(cz)]
+  y[0 + 1:(j - 1) * (j + 1)] <- -cz[-length(bz)]	# superdiagonal
+  y[1 + 0:(j - 1) * (j + 1)] <- bz	# diagonal
+  y[2 + 0:(j - 2) * (j + 1)] <- -az[-1] 	# subdiagonal
+  
+  u <- solve(y, un)
+  
+  ## (3) TURBULENT MIXING OF MIXED LAYER
   # the mixed layer depth is determined for each time step by comparing kinetic 
   # energy available from wind and the potential energy required to completely 
   # mix the water column to a given depth
@@ -351,7 +381,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   mix[n] <- KE/PE #append(mix, KE/PE)
   therm.z[n] <- maxdep #append(therm.z, maxdep)
   
-  ## (3) DENSITY INSTABILITIES
+  ## (4) DENSITY INSTABILITIES
   # convective overturn: Convective mixing is induced by an unstable density 
   # profile. All groups of water layers where the vertical density profile is 
   # unstable are mixed with the first stable layer below the unstable layer(s) 
@@ -385,7 +415,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   lines( u, seq(0, dx * nx, length.out=(nx)),
           ylim = rev(range(seq(0, dx * nx, length.out=(nx)))), lty = 'dashed');
   
-  ## (4) ICE FORMATION
+  ## (5) ICE FORMATION
   # according to Hostetler & Bartlein (1990): 
   # (1) ice forms when surface water temp <= 1 deg C and melts when > 1 deg
   # (2) rate of ice formation/melting is exponential function of ice thickness
@@ -462,7 +492,7 @@ df.u <- data.frame('datetime' = df$datetime,
 LN <- rLakeAnalyzer::ts.lake.number(wtr = df, wnd = df.u,
                                     wnd.height = 10,bathy = df.h)
 
-ggplot(LN, aes(datetime, (lake.number))) +
+g.ln <- ggplot(LN, aes(datetime, (lake.number))) +
   geom_line() +
   scale_y_continuous(trans='log10') +
   ylab('log10 Lake Number ()') + xlab('')+
@@ -603,7 +633,7 @@ g3 <- ggplot(m.df.n2, aes(as.numeric(time), as.numeric(as.character(variable))))
   ylab('Depth') +
   labs(fill = 'N2 [s-2]')+
   scale_y_reverse() 
-g <- g1 / g2 / g3 / g.stab / g.macro; g
+g <- g1 / g2 / g3 / g.ln / g.macro; g
 ggsave(filename = 'heatmap.png',plot = g, width = 15, height = 8, units = 'in')
 
 
@@ -672,8 +702,6 @@ for (i in unique(as.character(m.obs$variable))){
 ggplot() +
   geom_line(data = m.obs,aes(datetime, value, col = group)) +
   geom_line(data = m.df.sim.interp, aes(datetime, value, col = group)) +
-  # annotate(data=rmse, geom="text", x=as.POSIXct("2020-05-25 10:30:00 CDT"), y=16, label=(rmse$fit),
-           # color="red") +
   geom_text(data=rmse, aes( as.POSIXct("2020-05-26 10:30:00 CDT"), y=17, label=round(fit,2)),                 
             color="black", size =3) +
   facet_wrap(~ variable) +
