@@ -54,7 +54,7 @@ nx = 25 # number of layers we will have
 dt = 3600 # 24 hours times 60 min/hour times 60 seconds/min
 dx = zmax/nx # spatial step
 
-nyear = 5
+nyear = 1
 nt = nyear * 365* 24 * 60 * 60 # as.double(max(wQ$dt)) # maximum simulation length
 
 ## area and depth values of our lake 
@@ -94,7 +94,7 @@ u = approx(init.df$Depth_meter, init.df$Water_Temperature_celsius,
 rho = calc_dens(u)
 
 ## this is our attempt for turbulence closure, estimating eddy diffusivity
-eddy_diffusivity <-function(rho, depth, g, rho_0){
+eddy_diffusivity <-function(rho, depth, g, rho_0, ice){
   buoy = rep(1, (nx)) * 7e-5
   for (i in seq(1, nx-1)){#range(0, nx - 1):
     buoy[i] = sqrt( abs(rho[i+1] - rho[i]) / (depth[i+1] - depth[i]) * g/rho_0 )
@@ -105,11 +105,17 @@ eddy_diffusivity <-function(rho, depth, g, rho_0){
   low_values_flags = buoy < 7e-5  # Where values are low
   buoy[low_values_flags] = 7e-5
   
-  kz = 0.00706 *( 3.8 * 1e1)**(0.56) * (buoy)**(-0.43)
+  if (ice){
+    ak <- 0.000898
+  } else{
+    ak <- 0.00706 *( max(area)/1E6)**(0.56)
+  }
+  
+  kz = ak * (buoy)**(-0.43)
   return(kz)
 }
 
-kz = eddy_diffusivity(rho, depth, 9.81, 998.2) / 86400# 1e4
+kz = eddy_diffusivity(rho, depth, g, rho_0, ice = FALSE) / 86400# 1e4
 
 ## atmospheric boundary conditions
 ## create daily meteorological variables
@@ -133,11 +139,16 @@ daily_meteo$ea <- (101.325 * exp(13.3185 * (1 - (373.15 / (daily_meteo$Air_Tempe
                 1.976 * (1 - (373.15 / (daily_meteo$Air_Temperature_celsius + 273.15)))**2 -
                 0.6445 * (1 - (373.15 / (daily_meteo$Air_Temperature_celsius + 273.15)))**3 -
                 0.1229 * (1 - (373.15 / (daily_meteo$Air_Temperature_celsius + 273.15)))**4)) *daily_meteo$Relative_Humidity_percent/100
+daily_meteo$ea <- (daily_meteo$Relative_Humidity_percent/100) * 10^(9.28603523 - 2322.37885/(daily_meteo$Air_Temperature_celsius + 273.15))
 
-
+## calibration parameters
 daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond <-
-  daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond *3
-Cd <- 0.0013
+  daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond # wind speed multiplier
+Cd <- 0.00013 # wind shear drag coefficient, usually set at 0.0013 because 'appropriate for most engineering solutions' (Fischer 1979)
+meltP <- 5 # melt energy multiplier
+dt_iceon_avg =  0.8 # moving average modifier for ice onset
+Hgeo <- 0.1 # geothermal heat flux
+KEice <- 1/1000
 
 ## linearization of driver data, so model can have dynamic step
 Jsw <- approxfun(x = daily_meteo$dt, y = daily_meteo$Shortwave_Radiation_Downwelling_wattPerMeterSquared, method = "linear", rule = 2)
@@ -170,17 +181,18 @@ emissivity = 0.97
 sigma = 5.67 * 10^(-8)
 p2 = 1
 B = 0.61
+
 longwave <- function(cc, sigma, Tair, ea, emissivity, Jlw){  # longwave radiation into
   lw = emissivity * Jlw
   return(lw)
 }
-# longwave <- function(cc, sigma, Tair, ea, emissivity, Jlw){  # longwave radiation into
-#   Tair = Tair + 273.15
-#   p <- (1.33 * ea/Tair)
-#   Ea <- 1.24 * (1 + 0.17 * cc**2) * p**(1/7)
-#   lw <- emissivity * Ea *sigma * Tair**4
-#   return(lw)
-# }
+longwave <- function(cc, sigma, Tair, ea, emissivity, Jlw){  # longwave radiation into
+  Tair = Tair + 273.15
+  p <- (1.33 * ea/Tair)
+  Ea <- 1.24 * (1 + 0.17 * cc**2) * p**(1/7)
+  lw <- emissivity * Ea *sigma * Tair**4
+  return(lw)
+}
 backscattering <- function(emissivity, sigma, Twater){ # backscattering longwave 
   # radiation from the lake
   Twater = Twater + 273.15
@@ -201,7 +213,7 @@ latent <- function(Tair, Twater, Uw, p2, pa, ea){ # evaporation / latent heat
   fu = 4.4 + 1.82 * Uw + 0.26 *(Twater - Tair)
   fw = 0.61 * (1 + 10^(-6) * Pressure * (4.5 + 6 * 10^(-5) * Twater**2))
   ew = fw * 10 * ((0.7859+0.03477* Twater)/(1+0.00412* Twater))
-  latent = fu * p2 * (ew - ea * 1.33) * 1/6
+  latent = fu * p2 * (ew - ea * 1.33) #* 1/6
   return((-1) * latent)
 }
 
@@ -224,16 +236,19 @@ therm.z <- rep(NA, length = floor(nt/dt))
 mix.z <- rep(NA, length = floor(nt/dt))
 Him <- rep(NA, length = floor(nt/dt))
 
+startDate <- daily_meteo$datetime[1]
+densThresh <- 1e-4
 ice = FALSE
 Hi= 0
+iceT <- 6
 ## modeling code for vertical 1D mixing and heat transport
 for (n in 1:floor(nt/dt)){  #iterate through time
   print(paste0(round(n*100/floor(nt/dt),3),' %'))
   un = u # prior temperature values
-  kz = eddy_diffusivity(calc_dens(un), depth, 9.81, 998.2) / 86400
+  kz = eddy_diffusivity(calc_dens(un), depth, 9.81, 998.2, ice) / 86400
   
   if (ice){
-    kzn = rep(1E-6, length = length(kz))
+    kzn = kz
     absorp = 0.85
   } else {
     kzn = kz   
@@ -251,6 +266,9 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   # heat addition over depth
   H = (1- reflect) * (1- infra) * (Jsw(n * dt))  * #
     exp(-(kd ) *seq(dx,nx*dx,length.out=nx)) 
+  
+  Hg <- (area-lead(area))/dx * Hgeo/(4181 * calc_dens(un[1])) 
+  Hg[which(is.na(Hg))] <- min(Hg, na.rm = TRUE)
 
   # add heat to all layers
   # un[1] = un[1] +    Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) * dt/area[1]
@@ -269,17 +287,20 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   # surface layer
   u[1] = un[1] +
     (Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) +
-    abs(H[1+1]-H[1]) * area[1]/(dx) * 1/(4184 * calc_dens(un[1]) )) * dt/area[1]
+    abs(H[1+1]-H[1]) * area[1]/(dx) * 1/(4184 * calc_dens(un[1]) ) +
+      Hg[1]) * dt/area[1]
   
   # all other layers in between
   for (i in 2:(nx-1)){
     u[i] = un[i] +
       (area[i] * kzn[i] * 1 / dx**2 * (un[i+1] - 2 * un[i] + un[i-1]) +
-      abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ))* dt/area[i]
+      abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ) +
+        Hg[i])* dt/area[i]
   }
   # bottom layer
   u[nx] = un[nx] +
-    abs(H[nx]-H[nx-1]) * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx]) ) * dt
+    abs(H[nx]-H[nx-1]) * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx]) +
+                                                       Hg[nx]/area[nx]) * dt
 
    # j <- length(volume)
    # y <- array(0, c(j,j))
@@ -307,35 +328,42 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   # energy available from wind and the potential energy required to completely 
   # mix the water column to a given depth
   Zcv <- seq(1, nx) %*% area / sum(area) # center of volume
-  tau = 1.225 * Cd * Uw(n * dt)^2 # wind shear is air density times shear 
+  tau = 1.225 * Cd * Uw(n * dt)^2 # wind shear is air density times wind velocity 
   if (Uw(n * dt) <= 15) {
     c10 = 0.0005 * sqrt(Uw(n * dt))
   } else {
     c10 = 0.0026
   }
-  shear = sqrt((c10 * calc_dens(un[1]))/1.225) *  Uw(n * dt)# shear velocity
+  shear = sqrt((c10 * calc_dens(un[1]))/1.225) *  Uw(n * dt) # shear velocity
   # coefficient times wind velocity squared
   KE = shear *  tau * dt # kinetic energy as function of wind
+  
+  if (ice){
+    KE = KE * KEice
+  }
   maxdep = 1
   for (dep in 1:(nx-1)){
     if (dep == 1){
-      PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx)
-      # PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  * 
-                 # abs(calc_dens(u[dep+1])- calc_dens(u[dep])))
+      # PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx)
+      PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  *
+                 abs(calc_dens(u[dep+1])- calc_dens(u[dep])))
     } else {
       PEprior = PE
-      PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx +
-                 PEprior)
-      # PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  * 
-                 # abs(calc_dens(u[dep+1])- calc_dens(u[dep]))) + PEprior
+      # PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx +
+      #            PEprior)
+      PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  *
+      abs(calc_dens(u[dep+1])- calc_dens(u[dep]))) + PEprior
+      
     }
       if (PE > KE){
-        maxdep = dep
+        maxdep = dep-1
         break
+      } else if (dep>1 & PE < KE ){
+        u[(dep-1):dep] = (u[(dep-1):dep] %*% volume[(dep-1):dep])/sum(volume[(dep-1):dep])
       }
     maxdep = dep
   }
-  u[1:maxdep] = (u[1:(maxdep)] %*% volume[1:(maxdep)])/sum(volume[1:(maxdep)]) #mean(u[1:maxdep])
+  # u[1:maxdep] = (u[1:(maxdep)] %*% volume[1:(maxdep)])/sum(volume[1:(maxdep)]) #mean(u[1:maxdep])
   mix[n] <- KE/PE #append(mix, KE/PE)
   therm.z[n] <- maxdep #append(therm.z, maxdep)
   
@@ -348,18 +376,18 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   # the vertical density profile in the whole water column becomes neutral or stable.
   dens_u = calc_dens(u) 
   diff_dens_u <- (diff(dens_u)) 
-  diff_dens_u[abs(diff(dens_u)) < 1e-4] = 0
+  diff_dens_u[abs(diff(dens_u)) < densThresh] = 0
   while (any(diff_dens_u < 0)){
     dens_u = calc_dens(u) 
     for (dep in 1:(nx-1)){
-      if (dens_u[dep+1] < dens_u[dep] & abs(dens_u[dep+1] - dens_u[dep]) > 1e-4){
+      if (dens_u[dep+1] < dens_u[dep] & abs(dens_u[dep+1] - dens_u[dep]) > densThresh){
         u[dep:(dep+1)] = (u[dep:(dep+1)] %*% volume[dep:(dep+1)])/sum(volume[dep:(dep+1)]) #mean(u[dep:(dep+1)])
         break
       }
     }
     dens_u = calc_dens(u) 
     diff_dens_u <- (diff(dens_u)) 
-    diff_dens_u[abs(diff(dens_u)) < 1e-4] = 0
+    diff_dens_u[abs(diff(dens_u)) < densThresh] = 0
   }
   
   dens_u_n2 = calc_dens(u) 
@@ -381,7 +409,11 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   # (3) heat of fusion is added/subtracted from surface energy balance
   # (4) diffusion below ice only happens on molecular level
   # (5) with ice, surface absorption of incoming solar radiation increases to 85 %
-  if (any(u <= 0) == TRUE){
+  icep  = max(dt_iceon_avg,  (dt/86400))
+  x = (dt/86400) / icep
+  iceT = iceT * (1 - x) + u[1] * x
+  if ((iceT <= 0) == TRUE){
+  # if (any(u <= 0) == TRUE){
     supercooled <- which(u < 0)
     initEnergy <- sum((0-u[supercooled])*hyps$Area_meterSquared[supercooled] * dx * 4.18E6)
     
@@ -390,7 +422,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
     } else {
       if (Tair(n*dt) > 0){
         Tice <- 0
-        Hi = Hi -max(c(0, dt*(((1-0.4)*Jsw(n * dt))+(longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt)) +
+        Hi = Hi -max(c(0, meltP * dt*(((1-0.4)*Jsw(n * dt))+(longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt)) +
                                                       backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) +
                                                       latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) + 
                                                       sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt))) )/(1000*333500)))
@@ -408,9 +440,9 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   } else if (ice == TRUE & Hi > 0) {
         if (Tair(n*dt) > 0){
           Tice <- 0
-          Hi = Hi -max(c(0, dt*(((1-0.2)*Jsw(n * dt))+(backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) +
+          Hi = Hi -max(c(0, meltP * dt*(((1-0.2)*Jsw(n * dt))+(backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) +
                                                     latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) + 
-                                                    sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt))) )/(1000*333500)))
+                                                    sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt))) )/(1000*333500))) 
         } else {
           Tice <-  ((1/(10 * Hi)) * 0 +  Tair(n*dt)) / (1 + (1/(10 * Hi))) 
           Hi <- sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt)
@@ -449,18 +481,31 @@ plot(seq(1, ncol(um))*dt/24/3600, therm.z, type = 'l',ylim = rev(range( seq(0,zm
         ylab= 'Mixed Layer Depth (m)', lwd= 3)
 lines(therm.z.roll, lty ='dashed', lwd =3)
 
-# decision if lake is stratified or not: 1 deg C criterium
+## decision if lake is stratified or not: 1 deg C criterium
 strat.state <- um[1,] - um[nx,]
 strat.state <- ifelse(strat.state > 1, 1, 0)
 plot(seq(1, ncol(um))*dt/24/3600, strat.state, col = 'red', type = 'l', 
      xlab = 'Time (d)', ylab='Stratified conditions', ylim=c(0,1), lwd = 2)
 
-## Max. buoyancy frequency layer depth (direct model output)
+## max. buoyancy frequency layer depth (direct model output)
 mix.z.roll = zoo::rollmean(mix.z, 14)
 plot(mix.z, type = 'l',ylim = rev(range( seq(0,zmax, length.out=nx))), 
      col = 'red', xlab = 'Time', 
      ylab= 'Max. Buoyancy Freq. Depth (m)', lwd= 3)
 lines(mix.z.roll, lty ='dashed', lwd =3)
+
+## check stratification durations
+df.ice <- data.frame('time' = startDate + seq(1, ncol(um))*dt,
+                     'ice' = Him,
+                     'stratified' = strat.state)
+g.ice <- ggplot(df.ice) +
+  geom_line(aes(time, ice)) +
+  ylab('ice thickness (m)') + xlab('')+
+  geom_line(aes(time, stratified),
+            linetype = 2, col = 'blue') +
+  scale_y_continuous(sec.axis = sec_axis(trans = ~ . & 1,
+                                         name = "stratified (yes/no)")) +
+  theme_minimal();g.ice
 
 
 # meteorological heat fluxes
@@ -512,23 +557,24 @@ ggplot2::ggplot(df.m.m) +
 # 
 
 ## contour plot of water temperature
-time =  seq(1, ncol(um))*dt/24/3600
+# time =  seq(1, ncol(um))*dt/24/3600
+time =  startDate + seq(1, ncol(um))*dt
 df <- data.frame(cbind(time, t(um)) )
 colnames(df) <- c("time", as.character(paste0(seq(1,nrow(um)))))
 m.df <- reshape2::melt(df, "time")
-m.df$time <- time
+m.df$time <- as.POSIXct(time)
 
 df.kz <- data.frame(cbind(time, t(kzm)) )
 colnames(df.kz) <- c("time", as.character(paste0(seq(1,nrow(kzm)))))
 m.df.kz <- reshape2::melt(df.kz, "time")
-m.df.kz$time <- time
+m.df.kz$time <- as.POSIXct(time)
 
 df.n2 <- data.frame(cbind(time, t(n2m)) )
 colnames(df.n2) <- c("time", as.character(paste0(seq(1,nrow(n2m)))))
 m.df.n2 <- reshape2::melt(df.n2, "time")
-m.df.n2$time <- time
+m.df.n2$time <- as.POSIXct(time)
 
-g1 <- ggplot(m.df, aes(as.numeric(time), as.numeric(variable))) +
+g1 <- ggplot(m.df, aes((time), as.numeric(variable))) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
   scale_fill_gradientn(limits = c(-2,35),
                          colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
@@ -536,7 +582,7 @@ g1 <- ggplot(m.df, aes(as.numeric(time), as.numeric(variable))) +
   ylab('Depth') +
   labs(fill = 'Temp [degC]')+
   scale_y_reverse() 
-g2 <- ggplot(m.df.kz, aes(as.numeric(time), as.numeric(variable))) +
+g2 <- ggplot(m.df.kz, aes((time), as.numeric(variable))) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
   scale_fill_gradientn(#limits = c(-20,35),
                        colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
@@ -544,7 +590,7 @@ g2 <- ggplot(m.df.kz, aes(as.numeric(time), as.numeric(variable))) +
   ylab('Depth') +
   labs(fill = 'Diffusion [m2/s]')+
   scale_y_reverse() 
-g3 <- ggplot(m.df.n2, aes(as.numeric(time), as.numeric(variable))) +
+g3 <- ggplot(m.df.n2, aes((time), as.numeric(variable))) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
   scale_fill_gradientn(#limits = c(-20,35),
                        colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
@@ -552,29 +598,76 @@ g3 <- ggplot(m.df.n2, aes(as.numeric(time), as.numeric(variable))) +
   ylab('Depth') +
   labs(fill = 'N2 [s-2]')+
   scale_y_reverse() 
-g <- g1 / g2 / g3; g
+g <- g1 / g2 / g3 / g.ice; g
 ggsave(filename = 'heatmap.png',plot = g, width = 15, height = 8, units = 'in')
 
+
+
+# Package ID: knb-lter-ntl.130.29 Cataloging System:https://pasta.edirepository.org.
+# Data set title: North Temperate Lakes LTER: High Frequency Water Temperature Data - Lake  Mendota Buoy 2006 - current.
+inUrl2  <- "https://pasta.lternet.edu/package/data/eml/knb-lter-ntl/130/29/63d0587cf326e83f57b054bf2ad0f7fe" 
+infile2 <- tempfile()
+try(download.file(inUrl2,infile2,method="curl"))
+if (is.na(file.size(infile2))) download.file(inUrl2,infile2,method="auto")
+
+dt2 <-read.csv(infile2,header=F 
+               ,skip=1
+               ,sep=","  
+               ,quot='"' 
+               , col.names=c(
+                 "sampledate",     
+                 "year4",     
+                 "month",     
+                 "daynum",     
+                 "hour",     
+                 "depth",     
+                 "wtemp",     
+                 "flag_wtemp"    ), check.names=TRUE)
+
+unlink(infile2)
+
+# attempting to convert dt2$sampledate dateTime string to R date structure (date or POSIXct)                                
+tmpDateFormat<-"%Y-%m-%d"
+tmp2sampledate<-as.Date(dt2$sampledate,format=tmpDateFormat)
+# Keep the new dates only if they all converted correctly
+if(length(tmp2sampledate) == length(tmp2sampledate[!is.na(tmp2sampledate)])){dt2$sampledate <- tmp2sampledate } else {print("Date conversion failed for dt2$sampledate. Please inspect the data and do the date conversion yourself.")}                                                                    
+rm(tmpDateFormat,tmp2sampledate) 
+if (class(dt2$year4)=="factor") dt2$year4 <-as.numeric(levels(dt2$year4))[as.integer(dt2$year4) ]               
+if (class(dt2$year4)=="character") dt2$year4 <-as.numeric(dt2$year4)
+if (class(dt2$month)=="factor") dt2$month <-as.numeric(levels(dt2$month))[as.integer(dt2$month) ]               
+if (class(dt2$month)=="character") dt2$month <-as.numeric(dt2$month)
+if (class(dt2$daynum)=="factor") dt2$daynum <-as.numeric(levels(dt2$daynum))[as.integer(dt2$daynum) ]               
+if (class(dt2$daynum)=="character") dt2$daynum <-as.numeric(dt2$daynum)
+if (class(dt2$depth)=="factor") dt2$depth <-as.numeric(levels(dt2$depth))[as.integer(dt2$depth) ]               
+if (class(dt2$depth)=="character") dt2$depth <-as.numeric(dt2$depth)
+if (class(dt2$wtemp)=="factor") dt2$wtemp <-as.numeric(levels(dt2$wtemp))[as.integer(dt2$wtemp) ]               
+if (class(dt2$wtemp)=="character") dt2$wtemp <-as.numeric(dt2$wtemp)
+if (class(dt2$flag_wtemp)!="factor") dt2$flag_wtemp<- as.factor(dt2$flag_wtemp)
+
+
+dt2
+dt2$datetime <- as.POSIXct(paste0(dt2$sampledate,' ',dt2$hour,':00:00'), format = "%Y-%m-%d %H:%M:%S")
 
 # Package ID: knb-lter-ntl.29.29 Cataloging System:https://pasta.edirepository.org.
 # Data set title: North Temperate Lakes LTER: Physical Limnology of Primary Study Lakes 1981 - current.
 
-inUrl3 <- "https://pasta.lternet.edu/package/data/eml/knb-lter-ntl/29/29/03e232a1b362900e0f059859abe8eb97"
-infile3 <- tempfile()
-download.file(inUrl3, infile3, method = "curl")
-dt1 <- read_csv(infile3, skip = 1, quote = "\"", guess_max = 1e+05, 
-                col_names = c("lakeid", "year4", "daynum", "sampledate", 
-                              "depth", "rep", "sta", "event", "wtemp", "o2", "o2sat", 
-                              "deck", "light", "frlight", "flagdepth", "flagwtemp", 
-                              "flago2", "flago2sat", "flagdeck", "flaglight", "flagfrlight"))
-dt1
+# inUrl3 <- "https://pasta.lternet.edu/package/data/eml/knb-lter-ntl/29/29/03e232a1b362900e0f059859abe8eb97"
+# infile3 <- tempfile()
+# download.file(inUrl3, infile3, method = "curl")
+# dt1 <- read_csv(infile3, skip = 1, quote = "\"", guess_max = 1e+05, 
+#                 col_names = c("lakeid", "year4", "daynum", "sampledate", 
+#                               "depth", "rep", "sta", "event", "wtemp", "o2", "o2sat", 
+#                               "deck", "light", "frlight", "flagdepth", "flagwtemp", 
+#                               "flago2", "flago2sat", "flagdeck", "flaglight", "flagfrlight"))
+# dt1
 
-startDate <- daily_meteo$datetime[1]
-
+# time =  startDate + seq(1, ncol(um))*dt#/24/3600
+# obs <- dt1 %>%
+#   filter(lakeid == 'ME') %>%
+#   rename(datetime = sampledate) %>%
+#   select(datetime, depth, wtemp)
 time =  startDate + seq(1, ncol(um))*dt#/24/3600
-obs <- dt1 %>%
-  filter(lakeid == 'ME') %>%
-  rename(datetime = sampledate) %>%
+obs <- dt2 %>%
   select(datetime, depth, wtemp)
 
 df.sim <- df
@@ -638,7 +731,7 @@ m.obs$variable <-  factor(m.obs$variable, levels=paste0('wtemp.',seq(0,24,1)))
 m.df.sim.interp$variable <-  factor(m.df.sim.interp$variable, levels=paste0('wtemp.',seq(0,24,1)))
 
 ggplot() +
-  geom_line(data = m.obs,aes(datetime, value, col = group)) +
+  geom_point(data = m.obs,aes(datetime, value, col = group)) +
   geom_line(data = m.df.sim.interp, aes(datetime, value, col = group)) +
   geom_text(data=rmse, aes( as.POSIXct("2010-01-01 10:30:00 CDT"), y=17, label=round(fit,2)),                 
             color="black", size =3) +
