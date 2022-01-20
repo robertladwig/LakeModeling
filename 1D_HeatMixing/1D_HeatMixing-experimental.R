@@ -395,11 +395,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   max.n2 <- ifelse(max(n2, na.rm = T) > 1E-4, which.max(n2) * dx, dx * nx)
   mix.z[n] <- max.n2
   
-  n2m[, n] <- n2
-  um[, n] <- u
-  
-  lines( u, seq(0, dx * nx, length.out=(nx)),
-          ylim = rev(range(seq(0, dx * nx, length.out=(nx)))), lty = 'dashed');
+
   
   ## (5) ICE FORMATION
   # according to Hostetler & Bartlein (1990): 
@@ -453,6 +449,12 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   } else if (ice == TRUE & Hi <= 0){
     ice = FALSE 
   }
+  
+  n2m[, n] <- n2
+  um[, n] <- u
+  
+  lines( u, seq(0, dx * nx, length.out=(nx)),
+         ylim = rev(range(seq(0, dx * nx, length.out=(nx)))), lty = 'dashed');
   
   # print(un)
   # print(u)
