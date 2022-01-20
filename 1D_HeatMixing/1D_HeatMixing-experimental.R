@@ -24,12 +24,12 @@
 #' https://www.tandfonline.com/doi/pdf/10.1080/07438140409354159
 #' 
 #' Convective overturn algorithm is taken from Saloranta & Andersen (2007) 
-#' MyLake—A multi-year lake simulation model code suitable for uncertainty 
+#' MyLakeâA multi-year lake simulation model code suitable for uncertainty 
 #' and sensitivity analysis simulations. Ecological Modeling
 #' https://doi.org/10.1016/j.ecolmodel.2007.03.018 
 #' 
 #' Ice formation and growth/decay code is taken from Saloranta & Andersen (2007) 
-#' MyLake—A multi-year lake simulation model code suitable for uncertainty 
+#' MyLakeâA multi-year lake simulation model code suitable for uncertainty 
 #' and sensitivity analysis simulations. Ecological Modeling
 #' https://doi.org/10.1016/j.ecolmodel.2007.03.018 
 
@@ -54,7 +54,7 @@ nx = 25 # number of layers we will have
 dt = 3600 # 24 hours times 60 min/hour times 60 seconds/min
 dx = zmax/nx # spatial step
 
-nyear = 1
+nyear = 5
 nt = nyear * 365* 24 * 60 * 60 # as.double(max(wQ$dt)) # maximum simulation length
 
 ## area and depth values of our lake 
@@ -65,6 +65,11 @@ area[which.min(area)] <- 1e-2
 depth = depth= seq(1,nx*dx, length.out = nx)
 volume <- c(rev(diff(pracma::cumtrapz(area, depth))*(-1)),0)
 volume[which(volume == 0)] = min(volume[-which(volume == 0)])
+volume <- rep(0, (length(depth)-1))
+for (p in 1:length(volume)){
+  volume[p] <- pracma::trapz(depth[p:(p+1)],area[p:(p+1)])
+}
+volume <- c(volume, 1000)
 
 ## function to calculate density from temperature
 calc_dens <-function(wtemp){
@@ -131,7 +136,7 @@ daily_meteo$ea <- (101.325 * exp(13.3185 * (1 - (373.15 / (daily_meteo$Air_Tempe
 
 
 daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond <-
-  daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond * 1
+  daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond *3
 Cd <- 0.0013
 
 ## linearization of driver data, so model can have dynamic step
@@ -248,8 +253,8 @@ for (n in 1:floor(nt/dt)){  #iterate through time
     exp(-(kd ) *seq(dx,nx*dx,length.out=nx)) 
 
   # add heat to all layers
-  un[1] = un[1] +    Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) * dt/area[1]
-  un <- un  + (H * area/(dx) * 1/(4184 * calc_dens(un) ))* dt/area
+  # un[1] = un[1] +    Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) * dt/area[1]
+  # un <- un  + (H * area/(dx) * 1/(4184 * calc_dens(un) ))* dt/area
   
   # save variables for model diagnostics
   Hts[n] <-  Q *  area[1]/(area[1]*dx)*1/(4181 * calc_dens(un[1]) ) # append(Hts, Q *  area[1]/(area[1]*dx)*1/(4181 * calc_dens(un[1]) ))
@@ -262,47 +267,40 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   
   ## (2) DIFFUSION
   # surface layer
-  # u[1] = un[1] +
-  #    Q * area[1]/(area[1]*dx)*1/(4184 * calc_dens(un[1]) ) *dt +
-  #   H[1] * area[1]/(area[1]*dx) * 1/(4184 * calc_dens(un[1]) )* dt
-  # u[1] = un[1] +
-  #   (Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) +
-  #   H[1] * area[1]/(dx) * 1/(4184 * calc_dens(un[1]) )) * dt/area[1]
-    
-  # # all other layers in between
-  # for (i in 2:(nx-1)){
-  #   # u[i] = un[i] +
-  #   #   kzn[i] * dt / dx**2 * (un[i+1] - 2 * un[i] + un[i-1]) +
-  #   #   H[i] * area[i]/(area[i]*dx) * 1/(4184 * calc_dens(un[i]) )* dt
-  #   u[i] = un[i] +
-  #     (area[i] * kzn[i] * 1 / dx**2 * (un[i+1] - 2 * un[i] + un[i-1]) +
-  #     H[i] * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ))* dt/area[i]
-  # }
-  # 
-  # # bottom layer
-  # u[nx] = un[nx] + 
-  #   H[nx] * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx]) ) * dt
+  u[1] = un[1] +
+    (Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) +
+    abs(H[1+1]-H[1]) * area[1]/(dx) * 1/(4184 * calc_dens(un[1]) )) * dt/area[1]
   
-   j <- length(volume)
-   y <- array(0, c(j,j))
-   
-   # Linearized heat conservation equation matrix (diffusion only)
-   az <- (dt/dx) * kzn * (area / volume)                                        #coefficient for i-1
-   cz <- (dt/dx) * c(kzn[-1], NA) * (c(area[-1], NA) / volume)            #coefficient for i+1
-   bz <- 1 + az + cz                                                       #coefficient for i+1
-   #Boundary conditions, surface
-   az[1] <- 0
-   #cz(1) remains unchanged 
-   bz[1]<- 1 + az[1] + cz[1]
-   #Boundary conditions, bottom
-   #az(end) remains unchanged 
-   cz[length(cz)] <- 0
-   bz[length(bz)] <- 1 + az[length(az)] + cz[length(cz)]
-   y[0 + 1:(j - 1) * (j + 1)] <- -cz[-length(bz)]	# superdiagonal
-   y[1 + 0:(j - 1) * (j + 1)] <- bz	# diagonal
-   y[2 + 0:(j - 2) * (j + 1)] <- -az[-1] 	# subdiagonal
-   
-   u <- solve(y, un)
+  # all other layers in between
+  for (i in 2:(nx-1)){
+    u[i] = un[i] +
+      (area[i] * kzn[i] * 1 / dx**2 * (un[i+1] - 2 * un[i] + un[i-1]) +
+      abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ))* dt/area[i]
+  }
+  # bottom layer
+  u[nx] = un[nx] +
+    abs(H[nx]-H[nx-1]) * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx]) ) * dt
+
+   # j <- length(volume)
+   # y <- array(0, c(j,j))
+   # 
+   # # Linearized heat conservation equation matrix (diffusion only)
+   # az <- (dt/dx) * kzn * (area / volume)                                        #coefficient for i-1
+   # cz <- (dt/dx) * c(kzn[-1], NA) * (c(area[-1], NA) / volume)            #coefficient for i+1
+   # bz <- 1 + az + cz                                                       #coefficient for i+1
+   # #Boundary conditions, surface
+   # az[1] <- 0
+   # #cz(1) remains unchanged 
+   # bz[1]<- 1 + az[1] + cz[1]
+   # #Boundary conditions, bottom
+   # #az(end) remains unchanged 
+   # cz[length(cz)] <- 0
+   # bz[length(bz)] <- 1 + az[length(az)] + cz[length(cz)]
+   # y[0 + 1:(j - 1) * (j + 1)] <- -cz[-length(bz)]	# superdiagonal
+   # y[1 + 0:(j - 1) * (j + 1)] <- bz	# diagonal
+   # y[2 + 0:(j - 2) * (j + 1)] <- -az[-1] 	# subdiagonal
+   # 
+   # u <- solve(y, un)
  
   ## (3) TURBULENT MIXING OF MIXED LAYER
   # the mixed layer depth is determined for each time step by comparing kinetic 
@@ -337,7 +335,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
       }
     maxdep = dep
   }
-  u[1:maxdep] = mean(u[1:maxdep])
+  u[1:maxdep] = (u[1:(maxdep)] %*% volume[1:(maxdep)])/sum(volume[1:(maxdep)]) #mean(u[1:maxdep])
   mix[n] <- KE/PE #append(mix, KE/PE)
   therm.z[n] <- maxdep #append(therm.z, maxdep)
   
@@ -355,7 +353,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
     dens_u = calc_dens(u) 
     for (dep in 1:(nx-1)){
       if (dens_u[dep+1] < dens_u[dep] & abs(dens_u[dep+1] - dens_u[dep]) > 1e-4){
-        u[dep:(dep+1)] = mean(u[dep:(dep+1)])
+        u[dep:(dep+1)] = (u[dep:(dep+1)] %*% volume[dep:(dep+1)])/sum(volume[dep:(dep+1)]) #mean(u[dep:(dep+1)])
         break
       }
     }
@@ -633,7 +631,7 @@ for (i in unique(as.character(m.obs$variable))){
   id.r <-  (match(as.POSIXct(s$datetime), as.POSIXct(o$datetime) ))
   s <- s[which(!is.na(id.r)),]
   rmse <- rbind(rmse, data.frame('variable' = i,
-                                 'fit' = sqrt((sum((o$value-s$value)**2))/nrow(o))))
+                                 'fit' = sqrt((sum((o$value-s$value)**2, na.rm = T))/nrow(o))))
 }
 
 m.obs$variable <-  factor(m.obs$variable, levels=paste0('wtemp.',seq(0,24,1)))
