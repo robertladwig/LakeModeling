@@ -140,15 +140,33 @@ daily_meteo$ea <- (101.325 * exp(13.3185 * (1 - (373.15 / (daily_meteo$Air_Tempe
                 0.6445 * (1 - (373.15 / (daily_meteo$Air_Temperature_celsius + 273.15)))**3 -
                 0.1229 * (1 - (373.15 / (daily_meteo$Air_Temperature_celsius + 273.15)))**4)) *daily_meteo$Relative_Humidity_percent/100
 daily_meteo$ea <- (daily_meteo$Relative_Humidity_percent/100) * 10^(9.28603523 - 2322.37885/(daily_meteo$Air_Temperature_celsius + 273.15))
+startDate <- daily_meteo$datetime[1]
 
 ## calibration parameters
+daily_meteo$Shortwave_Radiation_Downwelling_wattPerMeterSquared <-
+  daily_meteo$Shortwave_Radiation_Downwelling_wattPerMeterSquared 
 daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond <-
   daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond # wind speed multiplier
 Cd <- 0.00013 # wind shear drag coefficient, usually set at 0.0013 because 'appropriate for most engineering solutions' (Fischer 1979)
-meltP <- 5 # melt energy multiplier
+meltP <- 10 # melt energy multiplier
 dt_iceon_avg =  0.8 # moving average modifier for ice onset
-Hgeo <- 0.1 # geothermal heat flux
+Hgeo <- 0.1 # 0.1 W/m2 geothermal heat flux
 KEice <- 1/1000
+# kd = 0.4 # 0.2# 1.0 #0.2 # light attenuation coefficient
+
+## light
+# Package ID: knb-lter-ntl.31.30 Cataloging System:https://pasta.edirepository.org.
+# Data set title: North Temperate Lakes LTER: Secchi Disk Depth; Other Auxiliary Base Crew Sample Data 1981 - current.
+secview <- read_csv('bc/light.csv') %>%
+  filter(sampledate >= startDate)
+if (secview$sampledate[1] >= startDate){
+  secview <- rbind(data.frame('sampledate' = startDate,
+                              'secnview' = secview$secnview[1]),
+                   secview)
+}
+secview$dt <- as.POSIXct(secview$sampledate) - (as.POSIXct(secview$sampledate)[1]) + 1
+secview$kd <- 2 / secview$secnview
+secview$kd  <- zoo::na.approx(secview$kd)
 
 ## linearization of driver data, so model can have dynamic step
 Jsw <- approxfun(x = daily_meteo$dt, y = daily_meteo$Shortwave_Radiation_Downwelling_wattPerMeterSquared, method = "linear", rule = 2)
@@ -158,6 +176,7 @@ ea <- approxfun(x = daily_meteo$dt, y = daily_meteo$ea, method = "linear", rule 
 Uw <- approxfun(x = daily_meteo$dt, y = daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond, method = "linear", rule = 2)
 CC <- approxfun(x = daily_meteo$dt, y = daily_meteo$Cloud_Cover, method = "linear", rule = 2)
 Pa <- approxfun(x = daily_meteo$dt, y = daily_meteo$Surface_Level_Barometric_Pressure_pascal, method = "linear", rule = 2)
+kd <- approxfun(x = secview$dt, y = secview$kd, method = "constant", rule = 2)
 
 ## additional parameters to run the model
 # meteorology
@@ -175,17 +194,16 @@ g <- 9.81  # gravity (m/s2)
 # vertical heating
 reflect <- 0.6 # fraction of reflected solar radiation
 infra = 0.3 # fraction infrared radiation
-kd = 1 # 0.2# 1.0 #0.2 # light attenuation coefficient
 
 emissivity = 0.97
 sigma = 5.67 * 10^(-8)
 p2 = 1
 B = 0.61
 
-longwave <- function(cc, sigma, Tair, ea, emissivity, Jlw){  # longwave radiation into
-  lw = emissivity * Jlw
-  return(lw)
-}
+# longwave <- function(cc, sigma, Tair, ea, emissivity, Jlw){  # longwave radiation into
+#   lw = emissivity * Jlw
+#   return(lw)
+# }
 longwave <- function(cc, sigma, Tair, ea, emissivity, Jlw){  # longwave radiation into
   Tair = Tair + 273.15
   p <- (1.33 * ea/Tair)
@@ -236,11 +254,13 @@ therm.z <- rep(NA, length = floor(nt/dt))
 mix.z <- rep(NA, length = floor(nt/dt))
 Him <- rep(NA, length = floor(nt/dt))
 
-startDate <- daily_meteo$datetime[1]
-densThresh <- 1e-4
+
+densThresh <- 1e-3
 ice = FALSE
 Hi= 0
 iceT <- 6
+
+start.time <- Sys.time()
 ## modeling code for vertical 1D mixing and heat transport
 for (n in 1:floor(nt/dt)){  #iterate through time
   print(paste0(round(n*100/floor(nt/dt),3),' %'))
@@ -264,8 +284,10 @@ for (n in 1:floor(nt/dt)){  #iterate through time
           sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)))  
   
   # heat addition over depth
-  H = (1- reflect) * (1- infra) * (Jsw(n * dt))  * #
-    exp(-(kd ) *seq(dx,nx*dx,length.out=nx)) 
+  # H = (1- reflect) * (1- infra) * (Jsw(n * dt))  * #
+  #   exp(-(kd ) *seq(dx,nx*dx,length.out=nx)) 
+  H =  (1- infra) * (Jsw(n * dt))  * #
+    exp(-(kd(n * dt) ) *seq(dx,nx*dx,length.out=nx)) 
   
   Hg <- (area-lead(area))/dx * Hgeo/(4181 * calc_dens(un[1])) 
   Hg[which(is.na(Hg))] <- min(Hg, na.rm = TRUE)
@@ -376,18 +398,18 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   # the vertical density profile in the whole water column becomes neutral or stable.
   dens_u = calc_dens(u) 
   diff_dens_u <- (diff(dens_u)) 
-  diff_dens_u[abs(diff(dens_u)) < densThresh] = 0
+  diff_dens_u[abs(diff(dens_u)) <= densThresh] = 0
   while (any(diff_dens_u < 0)){
     dens_u = calc_dens(u) 
     for (dep in 1:(nx-1)){
-      if (dens_u[dep+1] < dens_u[dep] & abs(dens_u[dep+1] - dens_u[dep]) > densThresh){
+      if (dens_u[dep+1] < dens_u[dep] & abs(dens_u[dep+1] - dens_u[dep]) >= densThresh){
         u[dep:(dep+1)] = (u[dep:(dep+1)] %*% volume[dep:(dep+1)])/sum(volume[dep:(dep+1)]) #mean(u[dep:(dep+1)])
         break
       }
     }
     dens_u = calc_dens(u) 
     diff_dens_u <- (diff(dens_u)) 
-    diff_dens_u[abs(diff(dens_u)) < densThresh] = 0
+    diff_dens_u[abs(diff(dens_u)) <= densThresh] = 0
   }
   
   dens_u_n2 = calc_dens(u) 
@@ -424,7 +446,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
                                                       sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt))) )/(1000*333500)))
       } else {
         Tice <-  ((1/(10 * Hi)) * 0 +  Tair(n*dt)) / (1 + (1/(10 * Hi))) 
-        Hi <- sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt)
+        Hi <- min(0.01, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
       }
     }
     ice = TRUE
@@ -441,7 +463,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
                                                     sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt))) )/(1000*333500))) 
         } else {
           Tice <-  ((1/(10 * Hi)) * 0 +  Tair(n*dt)) / (1 + (1/(10 * Hi))) 
-          Hi <- sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt)
+          Hi <- min(0.01, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
         }
         u[supercooled] = 0
         u[1] = 0
@@ -461,6 +483,9 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   # cat ("Press [enter] to continue")
   # line <- readline()
 }
+end.time <- Sys.time()
+time.taken <- end.time - start.time
+time.taken
 
 str(um)
 ## water temperature time series at different depths
@@ -733,11 +758,12 @@ m.obs$variable <-  factor(m.obs$variable, levels=paste0('wtemp.',seq(0,24,1)))
 m.df.sim.interp$variable <-  factor(m.df.sim.interp$variable, levels=paste0('wtemp.',seq(0,24,1)))
 
 ggplot() +
-  geom_point(data = m.obs,aes(datetime, value, col = group)) +
+  geom_point(data = m.obs,aes(datetime, value, col = group), size =0.3) +
   geom_line(data = m.df.sim.interp, aes(datetime, value, col = group)) +
   geom_text(data=rmse, aes( as.POSIXct("2010-01-01 10:30:00 CDT"), y=17, label=round(fit,2)),                 
             color="black", size =3) +
-  facet_wrap(~ factor(variable, level = c(paste0('wtemp.',seq(0,24,1))))) +
+  # ylim(-5,40)+
+  facet_wrap(~ factor(variable, level = c(paste0('wtemp.',seq(0,24,1)))), scales = 'free') +
   xlab('') + ylab('Temp. (deg C)')+
   theme_bw()
 ggsave(filename = 'fieldcomp.png', width = 15, height = 8, units = 'in')
