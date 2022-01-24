@@ -152,6 +152,7 @@ meltP <- 10 # melt energy multiplier
 dt_iceon_avg =  0.8 # moving average modifier for ice onset
 Hgeo <- 0.1 # 0.1 W/m2 geothermal heat flux
 KEice <- 1/1000
+Ice_min <- 0.1
 # kd = 0.4 # 0.2# 1.0 #0.2 # light attenuation coefficient
 
 ## light
@@ -436,7 +437,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
     initEnergy <- sum((0-u[supercooled])*hyps$Area_meterSquared[supercooled] * dx * 4.18E6)
     
     if (ice != TRUE) {
-      Hi <- 0.01+(initEnergy/(910*333500))/max(hyps$Area_meterSquared)
+      Hi <- Ice_min+(initEnergy/(910*333500))/max(hyps$Area_meterSquared)
     } else {
       if (Tair(n*dt) > 0){
         Tice <- 0
@@ -446,7 +447,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
                                                       sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt))) )/(1000*333500)))
       } else {
         Tice <-  ((1/(10 * Hi)) * 0 +  Tair(n*dt)) / (1 + (1/(10 * Hi))) 
-        Hi <- min(0.01, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
+        Hi <- min(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
       }
     }
     ice = TRUE
@@ -463,7 +464,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
                                                     sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt))) )/(1000*333500))) 
         } else {
           Tice <-  ((1/(10 * Hi)) * 0 +  Tair(n*dt)) / (1 + (1/(10 * Hi))) 
-          Hi <- min(0.01, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
+          Hi <- min(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
         }
         u[supercooled] = 0
         u[1] = 0
@@ -673,7 +674,8 @@ if (class(dt2$flag_wtemp)!="factor") dt2$flag_wtemp<- as.factor(dt2$flag_wtemp)
 
 
 dt2
-dt2$datetime <- as.POSIXct(paste0(dt2$sampledate,' ',dt2$hour,':00:00'), format = "%Y-%m-%d %H:%M:%S")
+dt2$bhour <- ifelse(dt2$hour %/% 100 >= 1, dt2$hour/100, dt2$hour)
+dt2$datetime <- as.POSIXct(paste0(dt2$sampledate,' ',dt2$bhour,':00:00'), format = "%Y-%m-%d %H:%M:%S")
 
 # Package ID: knb-lter-ntl.29.29 Cataloging System:https://pasta.edirepository.org.
 # Data set title: North Temperate Lakes LTER: Physical Limnology of Primary Study Lakes 1981 - current.
@@ -769,6 +771,105 @@ ggplot() +
 ggsave(filename = 'fieldcomp.png', width = 15, height = 8, units = 'in')
 
 
+
+
+bf.obs <- apply(wide.obs[,-1], 1, function(x) rLakeAnalyzer::buoyancy.freq(wtr = x, depths = as.numeric(unique(obs$depth))))
+bf.sim <- apply(df.sim.interp[,-22], 1, function(x) rLakeAnalyzer::buoyancy.freq(wtr = x, depths = as.numeric(unique(obs$depth))))
+
+z.bf.obs <- apply(bf.obs,2, function(x) which.max(x))
+z.bf.sim <- apply(bf.sim,2, function(x) which.max(x))
+df.z.df.obs <- data.frame('time' = wide.obs$datetime, 'z' = as.numeric(z.bf.obs))
+df.z.df.sim <- data.frame('time' = df.sim.interp$datetime, 'z' = z.bf.sim)
+
+ggplot() +
+  geom_line(data = df.z.df.obs,
+            aes(time, z, col = 'observed'), alpha = 0.7) +
+  geom_line(data = df.z.df.sim,
+            aes(time, z, col = 'sim'), alpha = 0.7) +
+    scale_y_reverse() + xlab('Time') + ylab('Thermocline depth') +
+  theme_minimal()
+
+avg.epi.obs <- NULL
+avg.hyp.obs <- NULL
+for (j in 1:nrow(df.z.df.obs)){
+  d = wide.obs[,-1]
+  if (is.na(df.z.df.obs$z[j])){
+    df.z.df.obs$z[j] = 1
+  }
+  avg.epi.obs <- append(avg.epi.obs,mean(as.numeric(d[j,1:df.z.df.obs$z[j]], na.rm = T)))
+  avg.hyp.obs <- append(avg.hyp.obs,mean(as.numeric(d[j,df.z.df.obs$z[j]:ncol(d)], na.rm = T)))
+}
+
+avg.epi.sim <- NULL
+avg.hyp.sim <- NULL
+for (j in 1:nrow(df.z.df.sim)){
+  d = df.sim.interp[,-22]
+  if (is.na(df.z.df.sim$z[j])){
+    df.z.df.sim$z[j] = 1
+  }
+  avg.epi.sim <- append(avg.epi.sim,mean(as.numeric(d[j,1:df.z.df.sim$z[j]], na.rm = T)))
+  avg.hyp.sim <- append(avg.hyp.sim,mean(as.numeric(d[j,df.z.df.sim$z[j]:ncol(d)], na.rm = T)))
+}
+
+df.avg.obs <- data.frame('time' = wide.obs$datetime,
+                         'epi' = avg.epi.obs,
+                         'hyp' = avg.hyp.obs,
+                         'type' = 'obs')
+df.avg.sim <- data.frame('time' = df.sim.interp$datetime,
+                         'epi' = avg.epi.sim,
+                         'hyp' = avg.hyp.sim,
+                         'type' = 'sim')
+
+ggplot() +
+  geom_point(data = df.avg.obs,
+            aes(time, epi, col = 'observed epi'), alpha = 0.7) +
+  geom_point(data = df.avg.obs,
+            aes(time, hyp, col = 'observed hyp'), alpha = 0.7) +
+  geom_line(data = df.avg.sim,
+            aes(time, epi, col = 'simulated epi'), alpha = 0.7) +
+  geom_line(data = df.avg.sim,
+            aes(time, hyp, col = 'simulated hyp'), alpha = 0.7) +
+  xlab('Time') + ylab('Average temp.') +
+  theme_minimal()
+
+# stratification dates
+obs_dens <- abs(calc_dens(wide.obs$wtemp.1) - calc_dens(wide.obs$wtemp.20))
+sim_dens <- abs(calc_dens(df.sim.interp$wtemp.1) - calc_dens(df.sim.interp$wtemp.20))
+
+bindt <- ifelse(obs_dens >= 0.1, 1, 0)
+bindt[which(is.na(bindt))] <- 0
+bindy <- ifelse(sim_dens >= 0.1, 1, 0)
+
+df.obs.dens <- data.frame('time' =  wide.obs$datetime,
+                          'grad' =  bindt, 
+                          'year' = lubridate::year(wide.obs$datetime))
+df.sim.dens <- data.frame('time' =  df.sim.interp$datetime,
+                          'grad' =  bindy, 
+                          'year' = lubridate::year(df.sim.interp$datetime))
+
+ggplot() +
+  geom_line(data = df.obs.dens, aes(time, grad, col ='obs'))+
+  geom_line(data = df.sim.dens, aes(time, grad,col='sim')) +
+  facet_wrap(~ year)
+for (t in unique(lubridate::year(df.obs.dens$time))){
+  d = df.obs.dens %>%
+    filter(year == t)
+  for (i in (1+24*15):(nrow(d) -24*15)){
+    if (all(bindt[(i-1-24*15):(i-1)] != 1) & all(bindt[i:(i+(24*15))] == 1))
+      print(paste0('start: ',d$datetime[i]))
+    if (all(bindt[(i-1-24*15):(i-1)] == 1) & all(bindt[i:(i+(24*15))] != 1))
+      print(paste0('end: ',d$datetime[i]))
+  }
+
+}
+
+
+for (i in (1+24*30):(length(sim_dens)-(60*24))){
+  if (all(bindy[(i-1-24*30):(i-1)] != 1) & all(bindy[i:(i+(24*30))] == 1))
+    print(paste0('start: ',df.sim.interp$datetime[i]))
+  if (all(bindy[(i-1-24*30):(i-1)] == 1) & all(bindy[i:(i+(24*30))] != 1))
+    print(paste0('end: ',df.sim.interp$datetime[i]))
+}
 
 
 
