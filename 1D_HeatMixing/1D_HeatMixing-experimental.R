@@ -54,7 +54,7 @@ nx = 25 # number of layers we will have
 dt = 3600 # 24 hours times 60 min/hour times 60 seconds/min
 dx = zmax/nx # spatial step
 
-nyear = 1
+nyear = 3
 nt = nyear * 365* 24 * 60 * 60 # as.double(max(wQ$dt)) # maximum simulation length
 
 ## area and depth values of our lake 
@@ -165,7 +165,7 @@ if (secview$sampledate[1] >= startDate){
                    secview)
 }
 secview$dt <- as.POSIXct(secview$sampledate) - (as.POSIXct(secview$sampledate)[1]) + 1
-secview$kd <- 2 / secview$secnview
+secview$kd <- 1.7 / secview$secnview
 secview$kd  <- zoo::na.approx(secview$kd)
 
 ## linearization of driver data, so model can have dynamic step
@@ -603,7 +603,7 @@ m.df.n2$time <- as.POSIXct(time)
 
 g1 <- ggplot(m.df, aes((time), as.numeric(variable))) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
-  scale_fill_gradientn(limits = c(-2,35),
+  scale_fill_gradientn(limits = c(-2,40),
                          colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
   theme_minimal()  +xlab('Time') +
   ylab('Depth') +
