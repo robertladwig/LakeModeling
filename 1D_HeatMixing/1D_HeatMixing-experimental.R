@@ -148,9 +148,9 @@ daily_meteo$Shortwave_Radiation_Downwelling_wattPerMeterSquared <-
 daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond <-
   daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond # wind speed multiplier
 Cd <- 0.00013 # wind shear drag coefficient, usually set at 0.0013 because 'appropriate for most engineering solutions' (Fischer 1979)
-meltP <- 10 # melt energy multiplier
+meltP <- 1 # melt energy multiplier
 dt_iceon_avg =  0.8 # moving average modifier for ice onset
-Hgeo <- 0.1 # 0.1 W/m2 geothermal heat flux
+Hgeo <- 0.05 # 0.1 W/m2 geothermal heat flux
 KEice <- 1/1000
 Ice_min <- 0.1
 # kd = 0.4 # 0.2# 1.0 #0.2 # light attenuation coefficient
@@ -194,7 +194,7 @@ g <- 9.81  # gravity (m/s2)
 
 # vertical heating
 reflect <- 0.6 # fraction of reflected solar radiation
-infra = 0.3 # fraction infrared radiation
+infra = 0.4 # fraction infrared radiation
 
 emissivity = 0.97
 sigma = 5.67 * 10^(-8)
@@ -232,7 +232,7 @@ latent <- function(Tair, Twater, Uw, p2, pa, ea){ # evaporation / latent heat
   fu = 4.4 + 1.82 * Uw + 0.26 *(Twater - Tair)
   fw = 0.61 * (1 + 10^(-6) * Pressure * (4.5 + 6 * 10^(-5) * Twater**2))
   ew = fw * 10 * ((0.7859+0.03477* Twater)/(1+0.00412* Twater))
-  latent = fu * p2 * (ew - ea * 1.33) #* 1/6
+  latent = fu * p2 * (ew - ea) # * 1.33) #* 1/6
   return((-1) * latent)
 }
 
@@ -268,12 +268,18 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   un = u # prior temperature values
   kz = eddy_diffusivity(calc_dens(un), depth, 9.81, 998.2, ice) / 86400
   
-  if (ice){
+  if (ice & Tair(n*dt) <= 0){
     kzn = kz
-    absorp = 0.85
-  } else {
+    absorp = 1 - 0.7
+    infra = 1 - absorp
+  } else if (ice & Tair(n*dt) >= 0){
+    kzn = kz
+    absorp = 1 - 0.3
+    infra = 1 - absorp
+    } else if (!ice) {
     kzn = kz   
-    absorp = 1-reflect# 0.3
+    absorp = 1 - reflect# 0.3
+    infra = 1 - absorp
   }
   kzm[, n] <- kzn
   
@@ -441,7 +447,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
     } else {
       if (Tair(n*dt) > 0){
         Tice <- 0
-        Hi = Hi -max(c(0, meltP * dt*(((1-0.4)*Jsw(n * dt))+(longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt)) +
+        Hi = Hi -max(c(0, meltP * dt*((absorp*Jsw(n * dt))+(longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt)) +
                                                       backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) +
                                                       latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) + 
                                                       sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt))) )/(1000*333500)))
@@ -459,7 +465,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   } else if (ice == TRUE & Hi > 0) {
         if (Tair(n*dt) > 0){
           Tice <- 0
-          Hi = Hi -max(c(0, meltP * dt*(((1-0.2)*Jsw(n * dt))+(backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) +
+          Hi = Hi -max(c(0, meltP * dt*((absorp*Jsw(n * dt))+(backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) +
                                                     latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) + 
                                                     sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt))) )/(1000*333500))) 
         } else {
@@ -537,17 +543,36 @@ g.ice <- ggplot(df.ice) +
 
 
 # meteorological heat fluxes
-fluxes.df <- data.frame('time' = seq(1, ncol(um))*dt/24/3600,
+fluxes.df <- data.frame('time' =  startDate + seq(1, ncol(um))*dt,#/24/3600seq(1, ncol(um))*dt/24/3600,
                         'shortwave' = Swf,
-                        'longwavein' = Lwf,
-                        'longwaveout' = BLwf,
+                        'longwave' = Lwf + BLwf,
                         'latent' = Lf,
                         'sensible' = Sf,
                         'total' = Swf + Lwf + BLwf + Lf + Sf)
 m.fluxes.df <- reshape2::melt(fluxes.df, id = 'time')
+m.fluxes.df$type = 'model'
 ggplot(m.fluxes.df) +
   geom_line(aes(time, value)) +
   facet_wrap(~ variable, scales = 'free')
+
+glm.meteo <- read.csv('bc/lake.csv') %>%
+  rename(shortwave = Daily.Qsw, latent = Daily.Qe,
+         sensible = Daily.Qh, longwave = Daily.Qlw) %>%
+  mutate(total = shortwave + longwave + sensible + latent) %>%
+  select(time, shortwave, latent, sensible, longwave, total)
+m.glm.meteo <- reshape2::melt(glm.meteo, id = 'time')
+m.glm.meteo$type = 'GLM'
+m.glm.meteo$time <- as.POSIXct(m.glm.meteo$time)
+
+time =  startDate + seq(1, ncol(um))*dt
+g.heat <- ggplot(m.fluxes.df, aes(time, value)) +
+  geom_line(aes(time, value, col = type)) +
+  geom_line(aes(y=zoo::rollmean(value, 24, na.pad=TRUE))) +
+  geom_line(data =  m.glm.meteo, aes(time, value, col = type)) +
+  xlim(min(time), max(time))+
+  facet_wrap(~ variable, scales = 'free'); g.heat
+ggsave(filename = 'heatfluxes.png',g.heat,  width = 15, height = 8, units = 'in')
+
 
 ## vertical water temperature profiles over time
 df = data.frame('1' =NULL)
@@ -781,7 +806,7 @@ z.bf.sim <- apply(bf.sim,2, function(x) which.max(x))
 df.z.df.obs <- data.frame('time' = wide.obs$datetime, 'z' = as.numeric(z.bf.obs))
 df.z.df.sim <- data.frame('time' = df.sim.interp$datetime, 'z' = z.bf.sim)
 
-ggplot() +
+g.therm <- ggplot() +
   geom_line(data = df.z.df.obs,
             aes(time, z, col = 'observed'), alpha = 0.7) +
   geom_line(data = df.z.df.sim,
@@ -820,7 +845,7 @@ df.avg.sim <- data.frame('time' = df.sim.interp$datetime,
                          'hyp' = avg.hyp.sim,
                          'type' = 'sim')
 
-ggplot() +
+g.avg <- ggplot() +
   geom_point(data = df.avg.obs,
             aes(time, epi, col = 'observed epi'), alpha = 0.7) +
   geom_point(data = df.avg.obs,
@@ -831,6 +856,10 @@ ggplot() +
             aes(time, hyp, col = 'simulated hyp'), alpha = 0.7) +
   xlab('Time') + ylab('Average temp.') +
   theme_minimal()
+
+g.average <- g.therm / g.avg; g.average
+ggsave(filename = 'averaged.png',plot = g.average, width = 15, height = 8, units = 'in')
+
 
 # stratification dates
 obs_dens <- abs(calc_dens(wide.obs$wtemp.1) - calc_dens(wide.obs$wtemp.20))
