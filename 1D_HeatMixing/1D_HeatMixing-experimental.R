@@ -150,7 +150,7 @@ daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond <-
 Cd <- 0.00013 # wind shear drag coefficient, usually set at 0.0013 because 'appropriate for most engineering solutions' (Fischer 1979)
 meltP <- 1 # melt energy multiplier
 dt_iceon_avg =  0.8 # moving average modifier for ice onset
-Hgeo <- 0.05 # 0.1 W/m2 geothermal heat flux
+Hgeo <- 0.1 # 0.1 W/m2 geothermal heat flux
 KEice <- 1/1000
 Ice_min <- 0.1
 # kd = 0.4 # 0.2# 1.0 #0.2 # light attenuation coefficient
@@ -178,6 +178,7 @@ Uw <- approxfun(x = daily_meteo$dt, y = daily_meteo$Ten_Meter_Elevation_Wind_Spe
 CC <- approxfun(x = daily_meteo$dt, y = daily_meteo$Cloud_Cover, method = "linear", rule = 2)
 Pa <- approxfun(x = daily_meteo$dt, y = daily_meteo$Surface_Level_Barometric_Pressure_pascal, method = "linear", rule = 2)
 kd <- approxfun(x = secview$dt, y = secview$kd, method = "constant", rule = 2)
+RH <- approxfun(x = daily_meteo$dt, y = daily_meteo$Relative_Humidity_percent, method = "constant", rule = 2)
 
 ## additional parameters to run the model
 # meteorology
@@ -225,16 +226,32 @@ sensible <- function(p2, B, Tair, Twater, Uw){ # convection / sensible heat
   sensible <- ( p2 * B * fu * (Twater - Tair)) 
   return((-1) * sensible)
 }
-latent <- function(Tair, Twater, Uw, p2, pa, ea){ # evaporation / latent heat 
+latent <- function(Tair, Twater, Uw, p2, pa, ea, RH){ # evaporation / latent heat 
   Twater = Twater + 273.15
   Tair = Tair + 273.15
   Pressure = pa / 100
   fu = 4.4 + 1.82 * Uw + 0.26 *(Twater - Tair)
   fw = 0.61 * (1 + 10^(-6) * Pressure * (4.5 + 6 * 10^(-5) * Twater**2))
   ew = fw * 10 * ((0.7859+0.03477* Twater)/(1+0.00412* Twater))
-  latent = fu * p2 * (ew - ea) # * 1.33) #* 1/6
+  latent = fu * p2 * (ew - ea) * 1/5# * 1.33) #* 1/6
   return((-1) * latent)
 }
+# latent <- function(Tair, Twater, Uw, p2, pa, ea, RH){ # evaporation / latent heat 
+#   Twater = Twater 
+#   Tair = Tair 
+#   Pressure = pa / 100
+#   Lv = 2.501 * 10^6 - 2370 * Twater
+#   es = 6.11 * exp((17.27 * Tair)/(237.3 + Tair))
+#   ez = (RH * es)/100
+#   qz = (0.622 * ez) / Pressure
+#   esat = 6.11 * exp((17.27 * Twater)/(237.3 + Twater))
+#   q0 = (0.622 * esat)/ Pressure
+#   Ra = 2.87 * (1 + 0.608 * qz)
+#   rho_z = (100 * Pressure)/(Ra * (Tair + 273.16))
+#   Ce = 0.0013
+#   latent = rho_z * Lv * Ce * Uw * (q0-qz)
+#   return((-1) * latent)
+# }
 
 ## plot initial profile
 plot( u, seq(0, nx * dx, length.out=(nx)),  
@@ -287,7 +304,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   # surface heat flux
   Q <- (absorp * Jsw(n * dt) + longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt)) + #longwave(emissivity = emissivity, Jlw = Jlw(n * dt)) +
           backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) +
-          latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) + 
+          latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt), RH = RH(n * dt)) + 
           sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)))  
   
   # heat addition over depth
@@ -308,7 +325,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   Swf[n] <-  absorp * Jsw(n * dt) # append(Swf, 0.3 * Jsw(n * dt))
   Lwf[n] <-  longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt))#longwave(emissivity = emissivity, Jlw = Jlw(n * dt))  #append(Lwf, longwave(emissivity = emissivity, Jlw = Jlw(n * dt)) )
   BLwf[n] <-  backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) #append(BLwf, backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1])) 
-  Lf[n] <- latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) #append(Lf, latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) )
+  Lf[n] <- latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt), RH = RH(n * dt)) #append(Lf, latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) )
   Sf[n] <- sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)) #append(Sf, sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)))
   
   
@@ -449,7 +466,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
         Tice <- 0
         Hi = Hi -max(c(0, meltP * dt*((absorp*Jsw(n * dt))+(longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt)) +
                                                       backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) +
-                                                      latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) + 
+                                                      latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt),  RH = RH(n * dt)) + 
                                                       sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt))) )/(1000*333500)))
       } else {
         Tice <-  ((1/(10 * Hi)) * 0 +  Tair(n*dt)) / (1 + (1/(10 * Hi))) 
@@ -466,7 +483,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
         if (Tair(n*dt) > 0){
           Tice <- 0
           Hi = Hi -max(c(0, meltP * dt*((absorp*Jsw(n * dt))+(backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) +
-                                                    latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) + 
+                                                    latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt),  RH = RH(n * dt)) + 
                                                     sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt))) )/(1000*333500))) 
         } else {
           Tice <-  ((1/(10 * Hi)) * 0 +  Tair(n*dt)) / (1 + (1/(10 * Hi))) 
