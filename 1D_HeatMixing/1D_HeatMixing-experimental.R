@@ -233,7 +233,7 @@ latent <- function(Tair, Twater, Uw, p2, pa, ea, RH){ # evaporation / latent hea
   fu = 4.4 + 1.82 * Uw + 0.26 *(Twater - Tair)
   fw = 0.61 * (1 + 10^(-6) * Pressure * (4.5 + 6 * 10^(-5) * Twater**2))
   ew = fw * 10 * ((0.7859+0.03477* Twater)/(1+0.00412* Twater))
-  latent = fu * p2 * (ew - ea) * 1# * 1.33) #* 1/6
+  latent = fu * p2 * (ew - ea) * 1/6# * 1.33) #* 1/6
   return((-1) * latent)
 }
 # latent <- function(Tair, Twater, Uw, p2, pa, ea, RH){ # evaporation / latent heat 
