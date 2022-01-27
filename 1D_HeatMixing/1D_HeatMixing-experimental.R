@@ -54,7 +54,7 @@ nx = 25 # number of layers we will have
 dt = 3600 # 24 hours times 60 min/hour times 60 seconds/min
 dx = zmax/nx # spatial step
 
-nyear = 3
+nyear = 1
 nt = nyear * 365* 24 * 60 * 60 # as.double(max(wQ$dt)) # maximum simulation length
 
 ## area and depth values of our lake 
@@ -233,7 +233,7 @@ latent <- function(Tair, Twater, Uw, p2, pa, ea, RH){ # evaporation / latent hea
   fu = 4.4 + 1.82 * Uw + 0.26 *(Twater - Tair)
   fw = 0.61 * (1 + 10^(-6) * Pressure * (4.5 + 6 * 10^(-5) * Twater**2))
   ew = fw * 10 * ((0.7859+0.03477* Twater)/(1+0.00412* Twater))
-  latent = fu * p2 * (ew - ea) * 1/5# * 1.33) #* 1/6
+  latent = fu * p2 * (ew - ea) * 1# * 1.33) #* 1/6
   return((-1) * latent)
 }
 # latent <- function(Tair, Twater, Uw, p2, pa, ea, RH){ # evaporation / latent heat 
@@ -277,6 +277,7 @@ densThresh <- 1e-3
 ice = FALSE
 Hi= 0
 iceT <- 6
+scheme = 'explicit' # options are 'explicit' (FTCS, Forward Time Centered Space) or 'implicit' (Crank-Nicholson scheme)
 
 start.time <- Sys.time()
 ## modeling code for vertical 1D mixing and heat transport
@@ -317,8 +318,39 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   Hg[which(is.na(Hg))] <- min(Hg, na.rm = TRUE)
 
   # add heat to all layers
-  # un[1] = un[1] +    Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) * dt/area[1]
-  # un <- un  + (H * area/(dx) * 1/(4184 * calc_dens(un) ))* dt/area
+  if (scheme == 'implicit'){
+    ## (2) DIFFUSION
+    # surface layer
+    un[1] = un[1] +    Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) * dt/area[1]
+    # # bottom layer
+    un <- un  + (H * area/(dx) * 1/(4184 * calc_dens(un) ))* dt/area
+    
+    j <- length(kzn)
+    y <- array(0, c(j,j))
+    
+    # all other layers in between
+    # Linearized heat conservation equation matrix (diffusion only)
+    az <- (dt/dx**2) * kzn                                         #coefficient for i-1
+    cz <- (dt/dx**2) * kzn                #coefficient for i+1
+    bz <- 1 + 2 * (dt/dx**2) * kzn                                                         #coefficient for i+1
+    #Boundary conditions, surface
+    az[1] <- 0
+    #cz(1) remains unchanged
+    bz[1]<- 1 #+ az[1] + (dt/dx**2) * kzn    
+    #Boundary conditions, bottom
+    #az(end) remains unchanged
+    cz[length(cz)] <- 0
+    bz[length(bz)] <- 1 #+ (dt/dx**2) * kzn    + cz[length(cz)]
+    y[0 + 1:(j - 1) * (j + 1)] <- -cz[-length(bz)]	# superdiagonal
+    y[1 + 0:(j - 1) * (j + 1)] <- bz	# diagonal
+    y[2 + 0:(j - 2) * (j + 1)] <- -az[-1] 	# subdiagonal
+    
+    y[1,2] <- 0#- 2 * (dt/dx**2) * kzn[1]           
+    y[nrow(y), (ncol(y)-1)] = 0#-2 * (dt/dx**2) * kzn[ncol(y)]           
+    
+    u <- solve(y, un)
+  }
+
   
   # save variables for model diagnostics
   Hts[n] <-  Q *  area[1]/(area[1]*dx)*1/(4181 * calc_dens(un[1]) ) # append(Hts, Q *  area[1]/(area[1]*dx)*1/(4181 * calc_dens(un[1]) ))
@@ -331,44 +363,25 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   
   ## (2) DIFFUSION
   # surface layer
-  u[1] = un[1] +
-    (Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) +
-    abs(H[1+1]-H[1]) * area[1]/(dx) * 1/(4184 * calc_dens(un[1]) ) +
-      Hg[1]) * dt/area[1]
-  
-  # all other layers in between
-  for (i in 2:(nx-1)){
-    u[i] = un[i] +
-      (area[i] * kzn[i] * 1 / dx**2 * (un[i+1] - 2 * un[i] + un[i-1]) +
-      abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ) +
-        Hg[i])* dt/area[i]
+  if (scheme == 'explicit'){
+    u[1] = un[1] +
+      (Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) +
+         abs(H[1+1]-H[1]) * area[1]/(dx) * 1/(4184 * calc_dens(un[1]) ) +
+         Hg[1]) * dt/area[1]
+    
+    # all other layers in between
+    for (i in 2:(nx-1)){
+      u[i] = un[i] +
+        (area[i] * kzn[i] * 1 / dx**2 * (un[i+1] - 2 * un[i] + un[i-1]) +
+           abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ) +
+           Hg[i])* dt/area[i]
+    }
+    # bottom layer
+    u[nx] = un[nx] +
+      abs(H[nx]-H[nx-1]) * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx]) +
+                                                         Hg[nx]/area[nx]) * dt
   }
-  # bottom layer
-  u[nx] = un[nx] +
-    abs(H[nx]-H[nx-1]) * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx]) +
-                                                       Hg[nx]/area[nx]) * dt
 
-   # j <- length(volume)
-   # y <- array(0, c(j,j))
-   # 
-   # # Linearized heat conservation equation matrix (diffusion only)
-   # az <- (dt/dx) * kzn * (area / volume)                                        #coefficient for i-1
-   # cz <- (dt/dx) * c(kzn[-1], NA) * (c(area[-1], NA) / volume)            #coefficient for i+1
-   # bz <- 1 + az + cz                                                       #coefficient for i+1
-   # #Boundary conditions, surface
-   # az[1] <- 0
-   # #cz(1) remains unchanged 
-   # bz[1]<- 1 + az[1] + cz[1]
-   # #Boundary conditions, bottom
-   # #az(end) remains unchanged 
-   # cz[length(cz)] <- 0
-   # bz[length(bz)] <- 1 + az[length(az)] + cz[length(cz)]
-   # y[0 + 1:(j - 1) * (j + 1)] <- -cz[-length(bz)]	# superdiagonal
-   # y[1 + 0:(j - 1) * (j + 1)] <- bz	# diagonal
-   # y[2 + 0:(j - 2) * (j + 1)] <- -az[-1] 	# subdiagonal
-   # 
-   # u <- solve(y, un)
- 
   ## (3) TURBULENT MIXING OF MIXED LAYER
   # the mixed layer depth is determined for each time step by comparing kinetic 
   # energy available from wind and the potential energy required to completely 
@@ -588,7 +601,7 @@ g.heat <- ggplot(m.fluxes.df, aes(time, value)) +
   geom_line(data =  m.glm.meteo, aes(time, value, col = type)) +
   xlim(min(time), max(time))+
   facet_wrap(~ variable, scales = 'free'); g.heat
-ggsave(filename = 'heatfluxes.png',g.heat,  width = 15, height = 8, units = 'in')
+ggsave(filename = paste0('boundaryconditions','_',scheme,'_',nyear,'.png'),g.heat,  width = 15, height = 8, units = 'in')
 
 
 ## vertical water temperature profiles over time
@@ -669,7 +682,7 @@ g3 <- ggplot(m.df.n2, aes((time), as.numeric(variable))) +
   labs(fill = 'N2 [s-2]')+
   scale_y_reverse() 
 g <- g1 / g2 / g3 / g.ice; g
-ggsave(filename = 'heatmap.png',plot = g, width = 15, height = 8, units = 'in')
+ggsave(filename = paste0('heatmaps','_',scheme,'_',nyear,'.png'),plot = g, width = 15, height = 8, units = 'in')
 
 
 
@@ -810,11 +823,11 @@ ggplot() +
   facet_wrap(~ factor(variable, level = c(paste0('wtemp.',seq(0,24,1)))), scales = 'free') +
   xlab('') + ylab('Temp. (deg C)')+
   theme_bw()
-ggsave(filename = 'fieldcomp.png', width = 15, height = 8, units = 'in')
+ggsave(filename = paste0('fielcomparison','_',scheme,'_',nyear,'.png'), width = 15, height = 8, units = 'in')
 
 
 
-
+## averaged responses
 bf.obs <- apply(wide.obs[,-1], 1, function(x) rLakeAnalyzer::buoyancy.freq(wtr = x, depths = as.numeric(unique(obs$depth))))
 bf.sim <- apply(df.sim.interp[,-22], 1, function(x) rLakeAnalyzer::buoyancy.freq(wtr = x, depths = as.numeric(unique(obs$depth))))
 
@@ -875,7 +888,7 @@ g.avg <- ggplot() +
   theme_minimal()
 
 g.average <- g.therm / g.avg; g.average
-ggsave(filename = 'averaged.png',plot = g.average, width = 15, height = 8, units = 'in')
+ggsave(filename = paste0('averaged','_',scheme,'_',nyear,'.png'),plot = g.average, width = 15, height = 8, units = 'in')
 
 
 # stratification dates
