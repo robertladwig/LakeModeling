@@ -216,8 +216,8 @@ c <- 9e4 # empirical constant
 g <- 9.81  # gravity (m/s2)
 
 # vertical heating
-reflect <- 0.6 # fraction of reflected solar radiation
-infra = 0.3 # fraction infrared radiation
+reflect <- 0.3 # fraction of reflected solar radiation
+infra = 0.7 # fraction infrared radiation
 # kd = 1# 0.2# 1.0 #0.2 # light attenuation coefficient
 
 emissivity = 0.97
@@ -268,7 +268,7 @@ km = 0.04#0.04#0.06 #0.4 # specific light attenuation coefficient for macrophyte
 # P = macrobiomass # macrophyte biomass per unit volume in gDW m-3, e.g. 100
 
 # dissipative turbulent energy by macrophytes
-Cdplant = 1.0 #1.0 # plant form drag coefficient
+Cdplant = 1 #1.0 # plant form drag coefficient
 ahat = 0.02#0.4 # 0.4 plant surface area per unit volume
 # Hmacrophytes <- seq(dx, zmax, length.out = nx) 
 # Hmacrophytes <- ifelse(Hmacrophytes < ((max(Hmacrophytes) - macroheight)), 0, 1) #c(rep(0,2),rep(1,8)) # height of macrophytes (abundance)
@@ -304,7 +304,7 @@ latent <- function(Tair, Twater, Uw, p2, pa, ea, RH){ # evaporation / latent hea
   fu = 4.4 + 1.82 * Uw + 0.26 *(Twater - Tair)
   fw = 0.61 * (1 + 10^(-6) * Pressure * (4.5 + 6 * 10^(-5) * Twater**2))
   ew = fw * 10 * ((0.7859+0.03477* Twater)/(1+0.00412* Twater))
-  latent = fu * p2 * (ew - ea) * 1/2
+  latent = fu * p2 * (ew - ea) 
   return((-1) * latent)
 }
 
@@ -770,7 +770,7 @@ ggsave(filename = paste0('heatmap','_',scheme,'.png'),plot = g, width = 15, heig
 ## model goodness
 obs <- read.csv('bc/temp_profiles_2020.csv')
 obs <- obs %>%
-  filter(pond == 'F') %>%
+  filter(pond == 'F', site_id == '19') %>%
   select(datetime, temp_depth_m, temp_c)
 
 df.sim <- df

@@ -54,7 +54,7 @@ nx = 25 # number of layers we will have
 dt = 3600 # 24 hours times 60 min/hour times 60 seconds/min
 dx = zmax/nx # spatial step
 
-nyear = 1
+nyear = 3
 nt = nyear * 365* 24 * 60 * 60 # as.double(max(wQ$dt)) # maximum simulation length
 
 ## area and depth values of our lake 
@@ -115,7 +115,7 @@ eddy_diffusivity <-function(rho, depth, g, rho_0, ice){
   return(kz)
 }
 
-kz = eddy_diffusivity(rho, depth, g, rho_0, ice = FALSE) / 86400# 1e4
+kz = eddy_diffusivity(rho, depth, g = 9.81, rho_0 = 009.2, ice = FALSE) / 86400# 1e4
 
 ## atmospheric boundary conditions
 ## create daily meteorological variables
@@ -146,9 +146,9 @@ startDate <- daily_meteo$datetime[1]
 daily_meteo$Shortwave_Radiation_Downwelling_wattPerMeterSquared <-
   daily_meteo$Shortwave_Radiation_Downwelling_wattPerMeterSquared 
 daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond <-
-  daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond # wind speed multiplier
-Cd <- 0.00013 # wind shear drag coefficient, usually set at 0.0013 because 'appropriate for most engineering solutions' (Fischer 1979)
-meltP <- 1 # melt energy multiplier
+  daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond * 0.8# wind speed multiplier
+Cd <- 0.0009 #0.0006 # wind shear drag coefficient, usually set at 0.0013 because 'appropriate for most engineering solutions' (Fischer 1979)
+meltP <- 5 # melt energy multiplier
 dt_iceon_avg =  0.8 # moving average modifier for ice onset
 Hgeo <- 0.1 # 0.1 W/m2 geothermal heat flux
 KEice <- 1/1000
@@ -194,8 +194,8 @@ c <- 9e4 # empirical constant
 g <- 9.81  # gravity (m/s2)
 
 # vertical heating
-reflect <- 0.6 # fraction of reflected solar radiation
-infra = 0.4 # fraction infrared radiation
+reflect <- 0.3 # fraction of reflected solar radiation
+infra = 0.7 # fraction infrared radiation
 
 emissivity = 0.97
 sigma = 5.67 * 10^(-8)
@@ -226,19 +226,19 @@ sensible <- function(p2, B, Tair, Twater, Uw){ # convection / sensible heat
   sensible <- ( p2 * B * fu * (Twater - Tair)) 
   return((-1) * sensible)
 }
-latent <- function(Tair, Twater, Uw, p2, pa, ea, RH){ # evaporation / latent heat 
+latent <- function(Tair, Twater, Uw, p2, pa, ea, RH){ # evaporation / latent heat
   Twater = Twater + 273.15
   Tair = Tair + 273.15
   Pressure = pa / 100
   fu = 4.4 + 1.82 * Uw + 0.26 *(Twater - Tair)
   fw = 0.61 * (1 + 10^(-6) * Pressure * (4.5 + 6 * 10^(-5) * Twater**2))
   ew = fw * 10 * ((0.7859+0.03477* Twater)/(1+0.00412* Twater))
-  latent = fu * p2 * (ew - ea) * 1/6# * 1.33) #* 1/6
+  latent = fu * p2 * (ew - ea)# * 1.33) #* 1/6
   return((-1) * latent)
 }
-# latent <- function(Tair, Twater, Uw, p2, pa, ea, RH){ # evaporation / latent heat 
-#   Twater = Twater 
-#   Tair = Tair 
+# latent <- function(Tair, Twater, Uw, p2, pa, ea, RH){ # evaporation / latent heat
+#   Twater = Twater
+#   Tair = Tair
 #   Pressure = pa / 100
 #   Lv = 2.501 * 10^6 - 2370 * Twater
 #   es = 6.11 * exp((17.27 * Tair)/(237.3 + Tair))
@@ -358,7 +358,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   Lwf[n] <-  longwave(cc = CC(n * dt), sigma = sigma, Tair = Tair(n * dt), ea = ea(n * dt), emissivity = emissivity, Jlw = Jlw(n * dt))#longwave(emissivity = emissivity, Jlw = Jlw(n * dt))  #append(Lwf, longwave(emissivity = emissivity, Jlw = Jlw(n * dt)) )
   BLwf[n] <-  backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1]) #append(BLwf, backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1])) 
   Lf[n] <- latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt), RH = RH(n * dt)) #append(Lf, latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt)) )
-  Sf[n] <- sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)) #append(Sf, sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)))
+  Sf[n] <-sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)) #append(Sf, sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n * dt)))
   
   
   ## (2) DIFFUSION
@@ -405,13 +405,15 @@ for (n in 1:floor(nt/dt)){  #iterate through time
     if (dep == 1){
       # PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx)
       PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  *
-                 abs(calc_dens(u[dep+1])- calc_dens(u[dep])))
+                 # abs(calc_dens(u[dep+1])- calc_dens(u[dep])))
+                 abs(calc_dens(u[dep+1])- mean(calc_dens(u[1:dep]))))
     } else {
       PEprior = PE
       # PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx +
       #            PEprior)
       PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  *
-      abs(calc_dens(u[dep+1])- calc_dens(u[dep]))) + PEprior
+      # abs(calc_dens(u[dep+1])- calc_dens(u[dep]))) + PEprior
+        abs(calc_dens(u[dep+1])- mean(calc_dens(u[1:dep])))) + PEprior
       
     }
       if (PE > KE){
@@ -728,7 +730,6 @@ if (class(dt2$wtemp)=="character") dt2$wtemp <-as.numeric(dt2$wtemp)
 if (class(dt2$flag_wtemp)!="factor") dt2$flag_wtemp<- as.factor(dt2$flag_wtemp)
 
 
-dt2
 dt2$bhour <- ifelse(dt2$hour %/% 100 >= 1, dt2$hour/100, dt2$hour)
 dt2$datetime <- as.POSIXct(paste0(dt2$sampledate,' ',dt2$bhour,':00:00'), format = "%Y-%m-%d %H:%M:%S")
 
@@ -909,7 +910,7 @@ df.sim.dens <- data.frame('time' =  df.sim.interp$datetime,
 ggplot() +
   geom_line(data = df.obs.dens, aes(time, grad, col ='obs'))+
   geom_line(data = df.sim.dens, aes(time, grad,col='sim')) +
-  facet_wrap(~ year)
+  facet_wrap(~ year, scales = 'free')
 for (t in unique(lubridate::year(df.obs.dens$time))){
   d = df.obs.dens %>%
     filter(year == t)
