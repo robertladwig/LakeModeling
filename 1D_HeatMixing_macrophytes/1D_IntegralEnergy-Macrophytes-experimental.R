@@ -112,7 +112,6 @@ meteo$Cloud_Cover <- gotmtools::calc_cc(date = as.POSIXct(meteo$Date),
 meteo$lw <- gotmtools::calc_in_lwr(cc = meteo$Cloud_Cover,
                                    airt = meteo$AirTemp,
                                    relh = meteo$RelHum)
-meteo$Pa = 100000
 meteo$ea <- (meteo$RelHum/100) * 10^(9.28603523 - 2322.37885/(meteo$AirTemp + 273.15))
 
 meteo$doy <- lubridate::yday(meteo$Date)
@@ -166,11 +165,18 @@ light$dt <- ((light$doy) - ((light$doy)[1]) + 1)* 86400
 light$kd <- 1.7 / light$secchi
 light$kd  <- zoo::na.approx(light$kd)
 
-meteo$WindSpeed <- meteo$WindSpeed * 1
+pressure <-read_csv('bc/pressure.csv') %>% 
+  mutate(doy = lubridate::yday(valid)) %>%
+  filter(doy >= meteo$doy[1])
+pressure$dt <- ((pressure$doy) - ((pressure$doy)[1]) + 1)* 86400
+
+
+meteo$WindSpeed <- meteo$WindSpeed * 1.2
+meteo$ShortWave <- meteo$ShortWave * 1
 Cd <- 0.0013 # wind shear drag coefficient, usually set at 0.0013 because 'appropriate for most engineering solutions' (Fischer 1979)
 meltP <- 1 # melt energy multiplier
 dt_iceon_avg =  0.8 # moving average modifier for ice onset
-Hgeo <- 1.1 # 0.1 W/m2 geothermal heat flux
+Hgeo <- 0.1 # 0.1 W/m2 geothermal heat flux
 KEice <- 1/1000
 Ice_min <- 0.1
 
@@ -181,7 +187,7 @@ Tair <- approxfun(x = meteo$dt, y = meteo$AirTemp, method = "linear", rule = 2)
 ea <- approxfun(x = meteo$dt, y = meteo$ea, method = "linear", rule = 2)
 Uw <- approxfun(x = meteo$dt, y = meteo$WindSpeed, method = "linear", rule = 2)
 CC <- approxfun(x = meteo$dt, y = meteo$Cloud_Cover, method = "linear", rule = 2)
-Pa <- approxfun(x = meteo$dt, y = meteo$Pa, method = "linear", rule = 2)
+Pa <- approxfun(x = pressure$dt, y = pressure$bpres_avg*100, method = "linear", rule = 2)
 kd <- approxfun(x = light$dt, y = light$kd, method = "constant", rule = 2)
 
 # initial water temperature profile
@@ -200,7 +206,7 @@ u = approx(obs$temp_depth_m[init.time], obs$temp_c[init.time],
 #            seq(0, nx * dx, length.out= nx))$y
 
 rho = calc_dens(u)
-kz = eddy_diffusivity(rho, depth, g, rho_0, ice = FALSE) / 86400# 1e4
+kz = eddy_diffusivity(rho, depth, g, rho_0 = 998.2, ice = FALSE) / 86400# 1e4
 
 ## additional parameters to run the model
 # meteorology
@@ -261,21 +267,21 @@ macroheight <- approxfun(x = canpy$dt, y = canpy$mean_canopy, method = "linear",
 macrobiomss <- approxfun(x = biomass$dt, y = biomass$mean_biomass, method = "linear", rule = 2)
 
 # vertical heating
-reflect <- 0.6 # fraction of reflected solar radiation
-infra = 0.4 # fraction infrared radiation
+reflect <- 0.6#0.6 # fraction of reflected solar radiation
+infra = 0.4#0.4 # fraction infrared radiation
 # kd = 0.4# 1.0 #0.2 # light attenuation coefficient
 km = 0.04#0.04#0.06 #0.4 # specific light attenuation coefficient for macrophytes
 # P = macrobiomass # macrophyte biomass per unit volume in gDW m-3, e.g. 100
 
 # dissipative turbulent energy by macrophytes
-Cdplant = 1 #1.0 # plant form drag coefficient
+Cdplant = 1e-3 #1.0 # plant form drag coefficient
 ahat = 0.02#0.4 # 0.4 plant surface area per unit volume
 # Hmacrophytes <- seq(dx, zmax, length.out = nx) 
 # Hmacrophytes <- ifelse(Hmacrophytes < ((max(Hmacrophytes) - macroheight)), 0, 1) #c(rep(0,2),rep(1,8)) # height of macrophytes (abundance)
-rho_mp = 998.0 # 70 #70 # biomass density
+rho_mp = 998.0 #998.0 # 70 #70 # biomass density
 
 # longwave <- function(cc, sigma, Tair, ea, emissivity, Jlw){  # longwave radiation into
-#   lw = emissivity * Jlw 
+#   lw = emissivity * Jlw
 #   return(lw)
 # }
 longwave <- function(cc, sigma, Tair, ea, emissivity, Jlw){  # longwave radiation into
@@ -300,7 +306,7 @@ sensible <- function(p2, B, Tair, Twater, Uw){ # convection / sensible heat
 latent <- function(Tair, Twater, Uw, p2, pa, ea, RH){ # evaporation / latent heat 
   Twater = Twater + 273.15
   Tair = Tair + 273.15
-  Pressure = pa / 100
+  Pressure = pa / 10rsx0
   fu = 4.4 + 1.82 * Uw + 0.26 *(Twater - Tair)
   fw = 0.61 * (1 + 10^(-6) * Pressure * (4.5 + 6 * 10^(-5) * Twater**2))
   ew = fw * 10 * ((0.7859+0.03477* Twater)/(1+0.00412* Twater))
@@ -369,7 +375,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
   
   # heat addition over depth
   P = macrobiomss(n * dt)
-  H = (1- reflect) * (1- infra) * (Jsw(n * dt))  * #
+  H =  (1- infra) * (Jsw(n * dt))  * #
     exp(-(kd(n * dt) + km * P) *seq(dx,nx*dx,length.out=nx)) 
   
   Hg <- (area-lead(area))/dx * Hgeo/(4181 * calc_dens(un[1])) 
@@ -469,7 +475,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
       # PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx)
       PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  *
                  abs(calc_dens(u[dep+1])- calc_dens(u[dep])))
-      DKE = Hmacrophytes[dep]*(rho_mp* ahat * Cdplant) *Uw(n * dt)^3 * dt  *dx
+      DKE = Hmacrophytes[dep]*(calc_dens(u[dep])* ahat * Cdplant) *Uw(n * dt)^3 * dt  *dx
     } else {
       PEprior = PE
       # PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx +
@@ -477,7 +483,7 @@ for (n in 1:floor(nt/dt)){  #iterate through time
       PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  *
                  abs(calc_dens(u[dep+1])- calc_dens(u[dep]))) + PEprior
       DKEprior = DKE
-      DKE = Hmacrophytes[dep]*(rho_mp * ahat * Cdplant) *Uw(n * dt)^3 * dt  *dx + DKEprior
+      DKE = Hmacrophytes[dep]*(calc_dens(u[dep]) * ahat * Cdplant) *Uw(n * dt)^3 * dt  *dx + DKEprior # rho_mp
       KE = KE - DKE
     }
     if (PE > KE){
@@ -685,6 +691,8 @@ m.fluxes.df <- reshape2::melt(fluxes.df, id = 'time')
 ggplot(m.fluxes.df) +
   geom_line(aes(time, value)) +
   facet_wrap(~ variable, scales = 'free')
+ggsave(filename = paste0('boundaryconditions','_',scheme,'.png'),  width = 15, height = 8, units = 'in')
+
 
 ## vertical water temperature profiles over time
 df = data.frame('1' =NULL)
