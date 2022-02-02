@@ -625,21 +625,7 @@ ggplot2::ggplot(df.m.m) +
   scale_color_gradient(low = "lightblue", high = "red") +
   theme_minimal()
 
-## vertical temperature profiles
-# for (i in seq(1,ncol(um), length.out = 200)){
-#   n = i
-#   i = floor(i)
-#   png(paste0('../../animation_macrophyte/pic_',match(n, seq(1,ncol(um), 
-# length.out=200)),'.png'))
-#   plot(um[,i], seq(dx,zmax, length.out=nx),
-#        ylim = rev(range( seq(dx,zmax, length.out=nx))), col = 'red', 
-# type = 'l', xlab = 'Temperature (degC)', 
-#        ylab='Depth (m)',
-#        xlim = c(0,35), main = paste0('time (d): ',round((i*dt)/24/3600,1)),
-#        lwd = 3)
-#   dev.off()
-# }
-# 
+
 
 ## contour plot of water temperature
 # time =  seq(1, ncol(um))*dt/24/3600
@@ -933,5 +919,34 @@ for (i in (1+24*30):(length(sim_dens)-(60*24))){
 
 
 
+## vertical temperature profiles
+for (i in seq(1,ncol(um), length.out = 200)){
+  n = i
+  i = floor(i)
 
-
+  sim = m.df.sim.interp %>% 
+    filter(datetime == time[i]) %>%
+    mutate(group = 'modeled') %>%
+    mutate(depth =  as.numeric(gsub(".*wtemp.","",as.character(factor(variable, level = c(paste0('wtemp.',seq(0,24,1))))))))
+  obs = m.obs %>%
+    filter(datetime == time[i]) %>%
+    mutate(group = 'observed') %>%
+    mutate(depth =  as.numeric(gsub(".*wtemp.","",as.character(factor(variable, level = c(paste0('wtemp.',seq(0,24,1))))))))
+  
+  ggplot() +
+    geom_path(data = sim, aes(value, 
+                              depth, col = group), size = 1.2) +
+    # facet_wrap(~ factor(variable, level = c(paste0('wtemp.',seq(0,24,1)))), scales = 'free') +
+    geom_point(data = obs ,aes(value, depth, col = group), size =1.2) +
+     xlab('temp. (deg C)') + ylab('depth (m)')+
+    scale_y_reverse() +
+    scale_color_manual(values = c("#E69F00", "#56B4E9")) +
+    ggtitle( time[i]) + 
+    labs(col='') +
+    xlim(-5, 35) + 
+    theme_bw()
+  
+  ggsave(paste0('../../animation_mendota/pic_',match(n, seq(1,ncol(um),length.out=200)),'.png'),
+         width = 4, height = 5, units = 'in')
+  
+}
