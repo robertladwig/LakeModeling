@@ -151,8 +151,8 @@ run_thermalmodel <- function(u, startTime, endTime,
                              sigma = 5.67 * 10^(-8), 
                              p2 = 1, 
                              B = 0.61,
-                             g = 0.91,
-                             Cd = 0.0009, # momentum coefficient (wind)
+                             g = 9.81,
+                             Cd = 0.0013, # momentum coefficient (wind)
                              meltP = 5, 
                              dt_iceon_avg = 0.8,
                              Hgeo = 0.1, # geothermal heat
@@ -177,7 +177,7 @@ run_thermalmodel <- function(u, startTime, endTime,
   CC <- approxfun(x = daily_meteo$dt, y = daily_meteo$Cloud_Cover, method = "linear", rule = 2)
   Pa <- approxfun(x = daily_meteo$dt, y = daily_meteo$Surface_Level_Barometric_Pressure_pascal, method = "linear", rule = 2)
   kd <- approxfun(x = secview$dt, y = secview$kd, method = "constant", rule = 2)
-  RH <- approxfun(x = daily_meteo$dt, y = daily_meteo$Relative_Humidity_percent, method = "constant", rule = 2)
+  RH <- approxfun(x = daily_meteo$dt, y = daily_meteo$Relative_Humidity_percent, method = "linear", rule = 2)
   
   um <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt), nrow = nx)
   kzm <- matrix(NA, ncol = length( seq(startTime, endTime, dt)/dt), nrow = nx)
@@ -189,9 +189,7 @@ run_thermalmodel <- function(u, startTime, endTime,
   
   if (!is.null(kd_light)){
     kd <- approxfun(x = seq(1, endTime, 1), y = rep(kd_light, (endTime)), method = "constant", rule = 2)
-  } else {
-    kd <- kd
-  }
+  } 
   
   start.time <- Sys.time()
   ## modeling code for vertical 1D mixing and heat transport

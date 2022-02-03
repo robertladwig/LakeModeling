@@ -32,7 +32,8 @@ u <- initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
 
 ## atmo8,spheric boundary conditions
 meteo_all <- provide_meteorology(meteofile = 'bc/LakeEnsemblR_meteo_standard.csv',
-                    secchifile = 'bc/light.csv', windfactor = 0.8)
+                    secchifile = 'bc/light.csv', 
+                    windfactor = 0.8)
 
 ### EXAMPLE RUNS
 # 1 day
@@ -50,7 +51,8 @@ res <- run_thermalmodel(u = u,
                         depth = hyps_all[[2]], # depth
                         volume = hyps_all[[3]], # volume
                         daily_meteo = meteo_all[[1]],
-                        secview = meteo_all[[2]])
+                        secview = meteo_all[[2]],
+                        Cd = 0.0008)
 temp <-cbind(temp, res$temp)
 avgtemp <- rbind(avgtemp, res$average)
 # doing another day
@@ -71,7 +73,8 @@ for (i in 1:365){
                             depth = hyps_all[[2]], # depth
                             volume = hyps_all[[3]], # volume
                             daily_meteo = meteo_all[[1]],
-                            secview = meteo_all[[2]])
+                            secview = meteo_all[[2]],
+                           Cd = 0.0008)
   temp <-cbind(temp, res$temp[,-1])
   avgtemp <- rbind(avgtemp, res$average[-1,])
 }
@@ -95,4 +98,17 @@ ggplot(avgtemp) +
   geom_line(aes(time, thermoclineDep)) +
   theme_minimal() 
 
+time =  seq(1, ncol(temp), 1)
+df <- data.frame(cbind(time, t(temp)) )
+colnames(df) <- c("time", as.character(paste0(seq(1,nrow(temp)))))
+m.df <- reshape2::melt(df, "time")
+
+ggplot(m.df, aes((time), as.numeric(variable))) +
+  geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
+  scale_fill_gradientn(limits = c(-2,30),
+                       colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
+  theme_minimal()  +xlab('Time') +
+  ylab('Depth') +
+  labs(fill = 'Temp [degC]')+
+  scale_y_reverse() 
 
