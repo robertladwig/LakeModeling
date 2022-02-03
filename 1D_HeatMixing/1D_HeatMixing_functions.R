@@ -140,6 +140,7 @@ run_thermalmodel <- function(u, startTime, endTime,
                              ice = FALSE, 
                              Hi = 0, 
                              iceT = 6, 
+                             supercooled = 0,
                              scheme = 'explicit', 
                              kd_light = NULL,
                              densThresh = 1e-3, 
@@ -199,11 +200,11 @@ run_thermalmodel <- function(u, startTime, endTime,
     un = u # prior temperature values
     kz = eddy_diffusivity(calc_dens(un), depth, 9.81, 998.2, ice, area) / 86400
     
-    if (ice & Tair(n*dt) <= 0){
+    if (ice & Tair(n) <= 0){
       kzn = kz
       absorp = 1 - 0.7
       infra = 1 - absorp
-    } else if (ice & Tair(n*dt) >= 0){
+    } else if (ice & Tair(n) >= 0){
       kzn = kz
       absorp = 1 - 0.3
       infra = 1 - absorp
@@ -218,8 +219,8 @@ run_thermalmodel <- function(u, startTime, endTime,
     # surface heat flux
     Q <- (absorp * Jsw(n) + longwave(cc = CC(n), sigma = sigma, Tair = Tair(n), ea = ea(n), emissivity = emissivity, Jlw = Jlw(n)) + #longwave(emissivity = emissivity, Jlw = Jlw(n)) +
             backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
-            latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt), RH = RH(n)) + 
-            sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n)))  
+            latent(Tair = Tair(n), Twater = un[1], Uw = Uw(n), p2 = p2, pa = Pa(n), ea=ea(n), RH = RH(n)) + 
+            sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[1], Uw = Uw(n)))  
     
     # heat addition over depth
     H =  (1- infra) * (Jsw(n))  * #
@@ -370,22 +371,22 @@ run_thermalmodel <- function(u, startTime, endTime,
     icep  = max(dt_iceon_avg,  (dt/86400))
     x = (dt/86400) / icep
     iceT = iceT * (1 - x) + u[1] * x
-    if ((iceT <= 0) == TRUE){
+    if ((iceT <= 0) == TRUE & Hi < Ice_min){
       # if (any(u <= 0) == TRUE){
       supercooled <- which(u < 0)
-      initEnergy <- sum((0-u[supercooled])*hyps$Area_meterSquared[supercooled] * dx * 4.18E6)
+      initEnergy <- sum((0-u[supercooled])*area[supercooled] * dx * 4.18E6)
       
       if (ice != TRUE) {
-        Hi <- Ice_min+(initEnergy/(910*333500))/max(hyps$Area_meterSquared)
+        Hi <- Ice_min+(initEnergy/(910*333500))/max(area)
       } else {
-        if (Tair(n*dt) > 0){
+        if (Tair(n) > 0){
           Tice <- 0
           Hi = Hi -max(c(0, meltP * dt*((absorp*Jsw(n))+(longwave(cc = CC(n), sigma = sigma, Tair = Tair(n), ea = ea(n), emissivity = emissivity, Jlw = Jlw(n)) +
                                                            backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
-                                                           latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt),  RH = RH(n)) + 
-                                                           sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n))) )/(1000*333500)))
+                                                           latent(Tair = Tair(n), Twater = un[1], Uw = Uw(n ), p2 = p2, pa = Pa(n), ea=ea(n),  RH = RH(n)) + 
+                                                           sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[1], Uw = Uw(n))) )/(1000*333500)))
         } else {
-          Tice <-  ((1/(10 * Hi)) * 0 +  Tair(n*dt)) / (1 + (1/(10 * Hi))) 
+          Tice <-  ((1/(10 * Hi)) * 0 +  Tair(n)) / (1 + (1/(10 * Hi))) 
           Hi <- min(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
         }
       }
@@ -394,21 +395,21 @@ run_thermalmodel <- function(u, startTime, endTime,
         u[supercooled] = 0
         u[1] = 0
       }
-      Him[n] <- Hi
-    } else if (ice == TRUE & Hi > 0) {
-      if (Tair(n*dt) > 0){
+      Him[ match(n, seq(startTime, endTime, dt))] <- Hi
+    } else if (ice == TRUE & Hi >= Ice_min) {
+      if (Tair(n) > 0){
         Tice <- 0
         Hi = Hi -max(c(0, meltP * dt*((absorp*Jsw(n))+(backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
-                                                         latent(Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n *dt), p2 = p2, pa = Pa(n*dt), ea=ea(n*dt),  RH = RH(n)) + 
-                                                         sensible(p2 = p2, B = B, Tair = Tair(n*dt), Twater = un[1], Uw = Uw(n))) )/(1000*333500))) 
+                                                         latent(Tair = Tair(n), Twater = un[1], Uw = Uw(n ), p2 = p2, pa = Pa(n), ea=ea(n*dt),  RH = RH(n)) + 
+                                                         sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[1], Uw = Uw(n))) )/(1000*333500))) 
       } else {
         Tice <-  ((1/(10 * Hi)) * 0 +  Tair(n*dt)) / (1 + (1/(10 * Hi))) 
         Hi <- min(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
       }
       u[supercooled] = 0
       u[1] = 0
-      Him[n] <- Hi
-    } else if (ice == TRUE & Hi <= 0){
+      Him[ match(n, seq(startTime, endTime, dt))] <- Hi
+    } else if (ice == TRUE & Hi < Ice_min){
       ice = FALSE 
     }
     
@@ -430,9 +431,12 @@ run_thermalmodel <- function(u, startTime, endTime,
   ## averaged responses
   bf.sim <- apply(df.sim[,-1], 1, function(x) rLakeAnalyzer::buoyancy.freq(wtr = x, depths = seq(1,nrow(um))*dx))
   
-  z.bf.sim <- apply(bf.sim,2, function(x) which.max(x))
+  bf.sim <- apply(df.sim[,-1], 1, function(x) rLakeAnalyzer::center.buoyancy(wtr = x, depths = seq(1,nrow(um))*dx))
   
-  df.z.df.sim <- data.frame('time' = df.sim$datetime, 'z' = z.bf.sim)
+  
+  # z.bf.sim <- apply(bf.sim,2, function(x) which.max(x))
+  
+  df.z.df.sim <- data.frame('time' = df.sim$datetime, 'z' = bf.sim)
   
   avg.epi.sim <- NULL
   avg.hyp.sim <- NULL
@@ -464,15 +468,17 @@ run_thermalmodel <- function(u, startTime, endTime,
                            'epi' = avg.epi.sim,
                            'hyp' = avg.hyp.sim,
                            'tot' = avg.tot.sim,
-                           'stratFlag' = stratFlag)
+                           'stratFlag' = stratFlag,
+                           'thermoclineDep' = bf.sim)
   
   return(list('temp'  = um,
               'diff' = kzm,
               'mixing' = mix,
               'buoyancy' = n2m,
-              'icethickness' = Him,
+              'icethickness' = Hi,
               'iceflag' = ice,
               'icemovAvg' = iceT,
+              'supercooled' = supercooled,
               'mixingdepth' = mix.z,
               'thermoclinedepth' = therm.z,
               'endtime' = endTime,
