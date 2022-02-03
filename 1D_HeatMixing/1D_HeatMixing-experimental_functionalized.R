@@ -556,11 +556,11 @@ df.sim$datetime <-   startDate + seq(1, ncol(um))*dt#/24/3600
 
 
 ## averaged responses
-bf.sim <- apply(df.sim[,-1], 1, function(x) rLakeAnalyzer::buoyancy.freq(wtr = x, depths = as.numeric(unique(obs$depth))))
+bf.sim <- apply(df.sim[,-1], 1, function(x) rLakeAnalyzer::buoyancy.freq(wtr = x, depths = seq(1,nrow(um))*dx))
 
 z.bf.sim <- apply(bf.sim,2, function(x) which.max(x))
 
-df.z.df.sim <- data.frame('time' = df.sim.interp$datetime, 'z' = z.bf.sim)
+df.z.df.sim <- data.frame('time' = df.sim$datetime, 'z' = z.bf.sim)
 
 g.therm <- ggplot() +
   geom_line(data = df.z.df.sim,
@@ -584,7 +584,7 @@ for (j in 1:nrow(df.z.df.sim)){
                                        sum(area[df.z.df.sim$z[j]:ncol(d)])))
 }
 
-df.avg.sim <- data.frame('time' = df.sim.interp$datetime,
+df.avg.sim <- data.frame('time' = df.sim$datetime,
                          'epi' = avg.epi.sim,
                          'hyp' = avg.hyp.sim,
                          'type' = 'sim')
