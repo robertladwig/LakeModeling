@@ -306,7 +306,7 @@ sensible <- function(p2, B, Tair, Twater, Uw){ # convection / sensible heat
 latent <- function(Tair, Twater, Uw, p2, pa, ea, RH){ # evaporation / latent heat 
   Twater = Twater + 273.15
   Tair = Tair + 273.15
-  Pressure = pa / 10rsx0
+  Pressure = pa / 10
   fu = 4.4 + 1.82 * Uw + 0.26 *(Twater - Tair)
   fw = 0.61 * (1 + 10^(-6) * Pressure * (4.5 + 6 * 10^(-5) * Twater**2))
   ew = fw * 10 * ((0.7859+0.03477* Twater)/(1+0.00412* Twater))

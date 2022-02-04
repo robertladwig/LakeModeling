@@ -30,7 +30,7 @@ hyps_all <- get_hypsography(hypsofile = 'bc/LakeEnsemblR_bathymetry_standard.csv
 u <- initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
                      depth = hyps_all[[3]])
 
-## atmo8,spheric boundary conditions
+## atmospheric boundary conditions
 meteo_all <- provide_meteorology(meteofile = 'bc/LakeEnsemblR_meteo_standard.csv',
                     secchifile = 'bc/light.csv', 
                     windfactor = 0.8)
@@ -80,6 +80,11 @@ for (i in 1:365){
 }
 
 
+
+
+
+
+# plotting for checking model output and performance
 plot(seq(1, ncol(temp))*dt/24/3600, temp[1,], col = 'red', type = 'l', 
      xlab = 'Time (d)', ylab='Temperature (degC)', ylim=c(-1,35), lwd = 2)
 for (i in 2:nx){
