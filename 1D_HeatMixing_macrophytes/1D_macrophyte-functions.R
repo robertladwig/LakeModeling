@@ -7,24 +7,30 @@ calc_dens <-function(wtemp){
 }
 
 ## this is our attempt for turbulence closure, estimating eddy diffusivity
-eddy_diffusivity <-function(rho, depth, g, rho_0, ice, area){
+eddy_diffusivity <-function(rho, depth, g, rho_0, ice, area, diffmethod){
   buoy = rep(1, (nx)) * 7e-5
   for (i in seq(1, nx-1)){#range(0, nx - 1):
-    buoy[i] = sqrt( abs(rho[i+1] - rho[i]) / (depth[i+1] - depth[i]) * g/rho_0 )
+    buoy[i] = ( abs(rho[i+1] - rho[i]) / (depth[i+1] - depth[i]) * g/rho_0 )
   }
-  buoy[nx] = sqrt( abs(rho[nx-1] - rho[nx]) / abs(depth[nx-1] - depth[nx]) * 
+  buoy[nx] = ( abs(rho[nx-1] - rho[nx]) / abs(depth[nx-1] - depth[nx]) * 
                      g/rho_0 )
   
   low_values_flags = buoy < 7e-5  # Where values are low
   buoy[low_values_flags] = 7e-5
   
-  if (ice){
-    ak <- 0.000898
-  } else{
-    ak <- 0.00706 *( max(area)/1E6)**(0.56)
+  if ( diffmethod == 1){
+    if (ice){
+      ak <- 0.000898
+    } else{
+      ak <- 0.00706 *( max(area)/1E6)**(0.56)
+    }
+    
+    kz = ak * (buoy)**(-0.43)
+  } else if (diffmethod == 2){
+    kzmax = 0.410 * sqrt(max(area)/1E6)
+    kz = kzmax * ((7.5 * 10^(-5))/buoy)**(0.43)
   }
-  
-  kz = ak * (buoy)**(-0.43)
+
   return(kz)
 }
 
@@ -200,7 +206,10 @@ run_thermalmodel <- function(u, startTime, endTime,
                              rho_mp = 998.0,
                              km = 0.04,
                              windfactor = 1,
-                             shortwavefactor =1){ # spatial step){
+                             shortwavefactor = 1,
+                             diffusionfactor = 1,
+                             diffmethod = 1,
+                             rho_plant = 998.2){ # spatial step){
   
   ## linearization of driver data, so model can have dynamic step
   Jsw <- approxfun(x = meteo$dt, y = meteo$ShortWave * shortwavefactor, method = "linear", rule = 2)
@@ -232,7 +241,7 @@ run_thermalmodel <- function(u, startTime, endTime,
   for (n in seq(startTime, endTime, dt)){#1:(floor(endTime/dt - startTime/dt))){  #iterate through time 1:floor(nt/dt)
     
     un = u # prior temperature values
-    kz = eddy_diffusivity(calc_dens(un), depth, 9.81, 998.2, ice, area) / 86400
+    kz = eddy_diffusivity(calc_dens(un), depth, 9.81, 998.2, ice, area, diffmethod) / 86400 * diffusionfactor
     
     if (ice & Tair(n) <= 0){
       kzn = kz
@@ -257,9 +266,13 @@ run_thermalmodel <- function(u, startTime, endTime,
             sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[1], Uw = Uw(n)))  
     
     # heat addition over depth
+    Hmacrophytes <- seq(dx, zmax, length.out = nx) 
+    Hmacrophytes <- ifelse(Hmacrophytes < ((max(Hmacrophytes) - macroheight(n) )), 0, 1) #c(rep(0,2),rep(1,8)) # height of macrophytes (abundance)
+    macroz[match(n, seq(startTime, endTime, dt))] = macroheight(n)
+    
     P = macrobiomss(n)
     H =  (1- infra) * (Jsw(n))  * #
-      exp(-(kd(n * dt) + km * P) *seq(dx,nx*dx,length.out=nx)) 
+      exp(-(kd(n) + km * P * Hmacrophytes) *seq(dx,nx*dx,length.out=nx)) 
     
     Hg <- (area-lead(area))/dx * Hgeo/(4181 * calc_dens(un[1])) 
     Hg[which(is.na(Hg))] <- min(Hg, na.rm = TRUE)
@@ -338,10 +351,6 @@ run_thermalmodel <- function(u, startTime, endTime,
       KE = KE * KEice
     }
     
-    Hmacrophytes <- seq(dx, zmax, length.out = nx) 
-    Hmacrophytes <- ifelse(Hmacrophytes < ((max(Hmacrophytes) - macroheight(n) )), 0, 1) #c(rep(0,2),rep(1,8)) # height of macrophytes (abundance)
-    macroz[match(n, seq(startTime, endTime, dt))] = macroheight(n)
-    
     maxdep = 1
     for (dep in 1:(nx-1)){
       if (dep == 1){
@@ -349,7 +358,8 @@ run_thermalmodel <- function(u, startTime, endTime,
         PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  *
                    # abs(calc_dens(u[dep+1])- calc_dens(u[dep])))
                    abs(calc_dens(u[dep+1])- mean(calc_dens(u[1:dep]))))
-        DKE = Hmacrophytes[dep]*(calc_dens(u[dep])* ahat * Cdplant) *Uw(n)^3 * dt  *dx
+        # DKE = Hmacrophytes[dep]*(calc_dens(u[dep])* ahat * Cdplant) *Uw(n)^3 * dt  *dx
+        DKE = Hmacrophytes[dep]*(rho_plant* ahat * Cdplant) *Uw(n)^3 * dt  *dx
       } else {
         PEprior = PE
         # PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx +
@@ -358,7 +368,8 @@ run_thermalmodel <- function(u, startTime, endTime,
                    # abs(calc_dens(u[dep+1])- calc_dens(u[dep]))) + PEprior
                    abs(calc_dens(u[dep+1])- mean(calc_dens(u[1:dep])))) + PEprior
         DKEprior = DKE
-        DKE = Hmacrophytes[dep]*(calc_dens(u[dep]) * ahat * Cdplant) *Uw(n)^3 * dt  *dx + DKEprior # rho_mp
+        # DKE = Hmacrophytes[dep]*(calc_dens(u[dep]) * ahat * Cdplant) *Uw(n)^3 * dt  *dx + DKEprior # rho_mp
+        DKE = Hmacrophytes[dep]*(rho_plant * ahat * Cdplant) *Uw(n)^3 * dt  *dx + DKEprior # rho_mp
         KE = KE - DKE
       }
       if (PE > KE){

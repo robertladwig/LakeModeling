@@ -80,10 +80,59 @@ macro_all <- get_macrophyte(canopyfile = 'bc/canopy.csv',
 
 nt = as.double(max(meteo_all[[1]]$dt)) # maximum time duration
 
+
+# u = u
+# startTime = 1
+# endTime = nt
+# kd_light = NULL
+# zmax = zmax
+# nx = nx
+# dt = dt
+# dx = dx
+# area = hyps_all[[1]] # area
+# depth = hyps_all[[2]] # depth
+# volume = hyps_all[[3]] # volume
+# meteo = meteo_all[[1]] # meteorology
+# light = meteo_all[[2]] # light
+# pressure = meteo_all[[3]] # pressure
+# canpy = macro_all[[1]] # canopy height
+# biomass = macro_all[[2]] # macrophyte density
+# Cd = 0.0013 # wind momentum drag
+# km = 0 #0.04 # macrophyte light extinction
+# Cdplant = 1e3 # macrophyte momentum drag
+# ahat = 0.02 # macrophyte area to volume
+# reflect = 0.6
+# infra = 0.4
+# windfactor = 1.2 # wind multiplier
+# shortwavefactor = 1 # shortwave radiation multiplier
+# diffusionfactor = 1 # diffusion multiplier
+# diffmethod = 2
+# ice = FALSE
+# Hi = 0
+# iceT = 6
+# supercooled = 0
+# scheme = 'explicit'
+# kd_light = NULL
+# densThresh = 1e-3
+# reflect = 0.3
+# infra = 0.7
+# eps = 0.97
+# emissivity = 0.97
+# sigma = 5.67 * 10^(-8)
+# p2 = 1
+# B = 0.61
+# g = 9.81
+# meltP = 1
+# dt_iceon_avg = 0.8
+# Hgeo = 0.1 # geothermal heat
+# KEice = 1/1000
+# Ice_min = 0.1
+
 ### RUNS
 temp <- c()
 diff <- c()
 buoy <- c()
+macroz <- c()
 res <- run_thermalmodel(u = u, 
                         startTime = 1, 
                         endTime = nt, 
@@ -101,18 +150,23 @@ res <- run_thermalmodel(u = u,
                         canpy = macro_all[[1]], # canopy height
                         biomass = macro_all[[2]], # macrophyte density
                         Cd = 0.0013, # wind momentum drag
-                        km = 0.04, # macrophyte light extinction
-                        Cdplant = 1, # macrophyte momentum drag
-                        ahat = 0.02, # macrophyte area to volume
+                        km = 0.01, #0.008,#0.04, # macrophyte light extinction
+                        Cdplant = 1,#1e3, # macrophyte momentum drag
+                        ahat = 0.5, # macrophyte area to volume
                         reflect = 0.6, 
                         infra = 0.4,
-                        windfactor = 1.2, # wind multiplier 
-                        shortwavefactor = 1 # shortwave radiation multiplier
+                        windfactor = 1, # wind multiplier 
+                        shortwavefactor = 0.8, # shortwave radiation multiplier
+                        diffusionfactor = 1, # diffusion multiplier
+                        diffmethod = 2,
+                        densThresh = 1e-2,
+                        Hgeo = 1,
+                        rho_plant = 30
                         )
 temp <-cbind(temp, res$temp)
 diff <-cbind(diff, res$diff)
 buoy <-cbind(buoy, res$buoyancy)
-
+macroz <-cbind(macroz, res$macroheight)
 
 time =  meteo_all[[1]]$Date[1] + seq(1, ncol(temp))*dt
 df <- data.frame(cbind(time, t(temp)) )
@@ -222,4 +276,46 @@ ggplot() +
   xlab('') + ylab('Temp. (deg C)')+
   theme_bw()
 ggsave(filename = paste0('fieldcomparison.png'), width = 15, height = 8, units = 'in')
+
+
+
+## vertical temperature profiles
+# for (i in seq(1,ncol(temp), length.out = 200)){
+#   n = i
+#   i = floor(i)
+# 
+#   as.numeric(gsub(".*temp_c.","",as.character(factor(m.df.sim.interp$variable))))
+# 
+#   mc <- data.frame('datetime' = rep(time[1],length(seq(2,(2-macroz[i]),-0.1))),
+#                    'canopy' = seq(2,(2-macroz[i]),-0.1),
+#                    'value' =rep(30,length(seq(2,(2-macroz[i]),-0.1))))
+#   m.mc <- reshape2::melt(mc, id = c('datetime','value'))
+# 
+#   sim = m.df.sim.interp %>%
+#     filter(datetime == time[i]) %>%
+#     mutate(group = 'modeled') %>%
+#     mutate(depth =  unique(  as.numeric(gsub(".*temp_c.","",as.character(factor(variable))))))
+#   obs = m.obs %>%
+#     filter(datetime == time[i]) %>%
+#     mutate(group = 'observed') %>%
+#     mutate(depth =  unique(  as.numeric(gsub(".*temp_c.","",as.character(factor(variable))))))
+# 
+#   ggplot() +
+#     geom_path(data = sim, aes(value,
+#                               depth, col = group), size = 1.2) +
+#     # facet_wrap(~ factor(variable, level = c(paste0('wtemp.',seq(0,24,1)))), scales = 'free') +
+#     geom_line(data = mc, aes(value, canopy, col = 'macro'), size = 1.2, linetype=2) +
+#     geom_point(data = obs ,aes(value, depth, col = group), size =1.2) +
+#     xlab('temp. (deg C)') + ylab('depth (m)')+
+#     scale_y_reverse() +
+#     scale_color_manual(values = c('#69b3a2',"#E69F00", "#56B4E9")) +
+#     ggtitle( time[i]) +
+#     labs(col='') +
+#     xlim(15, 40) +
+#     theme_bw()
+# 
+#   ggsave(paste0('../../animation_macrophyte/pic_',match(n, seq(1,ncol(temp),length.out=200)),'.png'),
+#          width = 4, height = 5, units = 'in')
+# 
+# }
 

@@ -39,6 +39,7 @@ meteo_all <- provide_meteorology(meteofile = 'bc/LakeEnsemblR_meteo_standard.csv
 # 1 day
 temp <- c()
 avgtemp <- c()
+diff <- c()
 res <- run_thermalmodel(u = u, 
                         startTime = 1, 
                         endTime = 24*3600, 
@@ -55,6 +56,7 @@ res <- run_thermalmodel(u = u,
                         Cd = 0.0008)
 temp <-cbind(temp, res$temp)
 avgtemp <- rbind(avgtemp, res$average)
+diff <-cbind(diff, res$diff)
 # doing another day
 for (i in 1:365){
   res <-  run_thermalmodel(u = res$temp[, ncol(res$temp)], 
@@ -77,6 +79,7 @@ for (i in 1:365){
                            Cd = 0.0008)
   temp <-cbind(temp, res$temp[,-1])
   avgtemp <- rbind(avgtemp, res$average[-1,])
+  diff <-cbind(diff, res$diff[,-1])
 }
 
 
@@ -110,7 +113,7 @@ m.df <- reshape2::melt(df, "time")
 
 ggplot(m.df, aes((time), as.numeric(variable))) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
-  scale_fill_gradientn(limits = c(-2,30),
+  scale_fill_gradientn(limits = c(-2,35),
                        colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
   theme_minimal()  +xlab('Time') +
   ylab('Depth') +

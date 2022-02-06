@@ -10,9 +10,9 @@ calc_dens <-function(wtemp){
 eddy_diffusivity <-function(rho, depth, g, rho_0, ice, area){
   buoy = rep(1, (nx)) * 7e-5
   for (i in seq(1, nx-1)){#range(0, nx - 1):
-    buoy[i] = sqrt( abs(rho[i+1] - rho[i]) / (depth[i+1] - depth[i]) * g/rho_0 )
+    buoy[i] = ( abs(rho[i+1] - rho[i]) / (depth[i+1] - depth[i]) * g/rho_0 )
   }
-  buoy[nx] = sqrt( abs(rho[nx-1] - rho[nx]) / abs(depth[nx-1] - depth[nx]) * 
+  buoy[nx] = ( abs(rho[nx-1] - rho[nx]) / abs(depth[nx-1] - depth[nx]) * 
                      g/rho_0 )
   
   low_values_flags = buoy < 7e-5  # Where values are low

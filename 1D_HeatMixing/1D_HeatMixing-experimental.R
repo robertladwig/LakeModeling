@@ -111,7 +111,7 @@ eddy_diffusivity <-function(rho, depth, g, rho_0, ice){
     ak <- 0.00706 *( max(area)/1E6)**(0.56)
   }
   
-  kz = ak * (buoy)**(-0.43)
+  kz = ak * (buoy**2)**(-0.43)
   return(kz)
 }
 
