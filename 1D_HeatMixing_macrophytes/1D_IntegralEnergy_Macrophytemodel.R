@@ -75,7 +75,7 @@ u <- initial_profile(initfile = 'bc/temp_profiles_2020.csv',
 
 # macrophyte
 macro_all <- get_macrophyte(canopyfile = 'bc/canopy.csv',
-                            biomassfile = 'bc/ModelTest_MacrophyteSummary.csv',
+                            biomassfile = 'bc/biomass.csv',
                             processed_meteo = meteo_all[[1]])
 
 nt = as.double(max(meteo_all[[1]]$dt)) # maximum time duration
@@ -133,6 +133,7 @@ temp <- c()
 diff <- c()
 buoy <- c()
 macroz <- c()
+mixing <- c()
 res <- run_thermalmodel(u = u, 
                         startTime = 1, 
                         endTime = nt, 
@@ -167,6 +168,7 @@ temp <-cbind(temp, res$temp)
 diff <-cbind(diff, res$diff)
 buoy <-cbind(buoy, res$buoyancy)
 macroz <-cbind(macroz, res$macroheight)
+mixing <-cbind(mixing, res$mixing)
 
 time =  meteo_all[[1]]$Date[1] + seq(1, ncol(temp))*dt
 df <- data.frame(cbind(time, t(temp)) )
