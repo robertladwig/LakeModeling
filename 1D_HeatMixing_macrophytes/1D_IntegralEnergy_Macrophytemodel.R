@@ -34,12 +34,14 @@
 #' https://doi.org/10.1016/j.ecolmodel.2007.03.018 
 
 ## remove everything from workspace
-rm(list = ls())
+#rm(list = ls())
 
 # set wd to current dir of script
 setwd(dirname(rstudioapi::getSourceEditorContext()$path))
 
 source('1D_macrophyte-functions.R')
+
+devtools::install_github("aemon-j/gotmtools")
 
 ## colors for plotting
 library(tidyverse)
