@@ -75,10 +75,13 @@ provide_meteorology <- function(meteofile, secchifile,
   return(list(daily_meteo, secview))
 }
 
-initial_profile <- function(initfile, nx, dx, depth){
+initial_profile <- function(initfile, nx, dx, depth, processed_meteo){
+  meteo <- processed_meteo
+  startDate <- meteo$datetime[1]
   obs <- read_csv('bc/obs.txt')
   init.df <- obs %>% 
-    filter(datetime == min(datetime)) %>%
+    mutate(ditt = as.numeric(abs(as.Date(datetime) - as.Date(startDate)))) %>%
+    dplyr::filter(ditt == min(ditt)) %>%
     arrange(Depth_meter)
   if (max(depth) > max(init.df$Depth_meter)){
     init.df <- rbind(init.df, init.df[nrow(init.df),])
@@ -86,6 +89,8 @@ initial_profile <- function(initfile, nx, dx, depth){
   }
   u = approx(init.df$Depth_meter, init.df$Water_Temperature_celsius,
              seq(0, nx * dx, length.out= nx))$y
+  warning(paste0('Meteorological starting date is ',as.Date(startDate),', but observed data starts ',min(init.df$ditt),' days later on ',
+                 as.Date(min(init.df$datetime))))
   return(u)
 }
 
@@ -176,7 +181,7 @@ run_thermalmodel <- function(u, startTime, endTime,
   Uw <- approxfun(x = daily_meteo$dt, y = daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond, method = "linear", rule = 2)
   CC <- approxfun(x = daily_meteo$dt, y = daily_meteo$Cloud_Cover, method = "linear", rule = 2)
   Pa <- approxfun(x = daily_meteo$dt, y = daily_meteo$Surface_Level_Barometric_Pressure_pascal, method = "linear", rule = 2)
-  kd <- approxfun(x = secview$dt, y = secview$kd, method = "constant", rule = 2)
+  kd <- approxfun(x = secview$dt, y = secview$kd, method = "linear", rule = 2)
   RH <- approxfun(x = daily_meteo$dt, y = daily_meteo$Relative_Humidity_percent, method = "linear", rule = 2)
   
   um <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt), nrow = nx)
@@ -188,7 +193,7 @@ run_thermalmodel <- function(u, startTime, endTime,
   Him <- rep(NA, length = length( seq(startTime, endTime, dt)/dt))
   
   if (!is.null(kd_light)){
-    kd <- approxfun(x = seq(1, endTime, 1), y = rep(kd_light, (endTime)), method = "constant", rule = 2)
+    kd <- approxfun(x = seq(1, endTime, 1), y = rep(kd_light, (endTime)), method = "linear", rule = 2)
   } 
   
   start.time <- Sys.time()

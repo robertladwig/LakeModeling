@@ -26,46 +26,51 @@ dx = zmax/nx # spatial step
 hyps_all <- get_hypsography(hypsofile = 'bc/LakeEnsemblR_bathymetry_standard.csv',
                             dx = dx, nx = nx)
 
-## here we define our initial profile
-u <- initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
-                     depth = hyps_all[[3]])
-
 ## atmospheric boundary conditions
 meteo_all <- provide_meteorology(meteofile = 'bc/LakeEnsemblR_meteo_standard.csv',
                     secchifile = 'bc/light.csv', 
                     windfactor = 0.8)
 
+## here we define our initial profile
+u_ini <- initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
+                     depth = hyps_all[[3]],
+                     processed_meteo = meteo_all[[1]])
+
 ### EXAMPLE RUNS
-# 1 day
-temp <- c()
-avgtemp <- c()
-diff <- c()
-res <- run_thermalmodel(u = u, 
-                        startTime = 1, 
-                        endTime = 24*3600, 
-                        kd_light = NULL,
-                        zmax = zmax,
-                        nx = nx,
-                        dt = dt,
-                        dx = dx,
-                        area = hyps_all[[1]], # area
-                        depth = hyps_all[[2]], # depth
-                        volume = hyps_all[[3]], # volume
-                        daily_meteo = meteo_all[[1]],
-                        secview = meteo_all[[2]],
-                        Cd = 0.0008)
-temp <-cbind(temp, res$temp)
-avgtemp <- rbind(avgtemp, res$average)
-diff <-cbind(diff, res$diff)
-# doing another day
-for (i in 1:365){
-  res <-  run_thermalmodel(u = res$temp[, ncol(res$temp)], 
-                            startTime = res$endtime, 
-                            endTime =  res$endtime + 24*3600, 
-                            ice = res$iceflag, 
-                            Hi = res$icethickness, 
-                            iceT = res$icemovAvg,
-                            supercooled = res$supercooled,
+hydrodynamic_timestep = 24 * 3600
+total_runtime <- 365
+
+temp <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+              nrow = nx)
+avgtemp <- matrix(NA, ncol = 6,
+                nrow = total_runtime * hydrodynamic_timestep/ dt)
+if (exists('res')) {remove('res')}
+
+for (i in 1:total_runtime){
+  if (exists('res')){
+    u = res$temp[, ncol(res$temp)]
+    startTime = res$endtime
+    endTime =  res$endtime + hydrodynamic_timestep
+    ice = res$iceflag
+    Hi = res$icethickness 
+    iceT = res$icemovAvg
+    supercooled = res$supercooled
+  } else {
+    u = u_ini
+    startTime = 1 
+    endTime = hydrodynamic_timestep
+    ice = FALSE
+    Hi = 0
+    iceT = 6
+    supercooled = 0
+  }
+  res <-  run_thermalmodel(u = u, 
+                            startTime = startTime, 
+                            endTime =  endTime, 
+                            ice = ice, 
+                            Hi = Hi, 
+                            iceT = iceT,
+                            supercooled = supercooled,
                             kd_light = NULL,
                             zmax = zmax,
                             nx = nx,
@@ -77,15 +82,9 @@ for (i in 1:365){
                             daily_meteo = meteo_all[[1]],
                             secview = meteo_all[[2]],
                            Cd = 0.0008)
-  temp <-cbind(temp, res$temp[,-1])
-  avgtemp <- rbind(avgtemp, res$average[-1,])
-  diff <-cbind(diff, res$diff[,-1])
+  temp[, max(1, (startTime/dt)):(endTime/dt -1)] =  res$temp[,-ncol(res$temp)]
+  avgtemp[ max(1, (startTime/dt)):(endTime/dt -1),] <- as.matrix(res$average[-nrow(res$average),])
 }
-
-
-
-
-
 
 # plotting for checking model output and performance
 plot(seq(1, ncol(temp))*dt/24/3600, temp[1,], col = 'red', type = 'l', 
@@ -94,6 +93,11 @@ for (i in 2:nx){
   lines(seq(1, ncol(temp))*dt/24/3600, temp[i,], 
         lty = 'dashed',lwd =2)
 }
+
+time =  seq(1, ncol(temp), 1)
+avgtemp = as.data.frame(avgtemp)
+colnames(avgtemp) = c('time', 'epi', 'hyp', 'tot', 'stratFlag', 'thermoclineDep')
+
 ggplot(avgtemp) +
   geom_line(aes(time, epi, col = 'epilimnion')) +
   geom_line(aes(time, hyp, col = 'hypolimnion')) +
@@ -106,7 +110,6 @@ ggplot(avgtemp) +
   geom_line(aes(time, thermoclineDep)) +
   theme_minimal() 
 
-time =  seq(1, ncol(temp), 1)
 df <- data.frame(cbind(time, t(temp)) )
 colnames(df) <- c("time", as.character(paste0(seq(1,nrow(temp)))))
 m.df <- reshape2::melt(df, "time")
