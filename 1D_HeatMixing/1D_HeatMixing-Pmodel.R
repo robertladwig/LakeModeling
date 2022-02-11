@@ -39,6 +39,7 @@ u_ini <- initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
 ### EXAMPLE RUNS
 hydrodynamic_timestep = 24 * 3600
 total_runtime <- 365
+startingDate <- meteo_all[[1]]$datetime[1]
 
 temp <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
               nrow = nx)
@@ -51,10 +52,11 @@ for (i in 1:total_runtime){
     u = res$temp[, ncol(res$temp)]
     startTime = res$endtime
     endTime =  res$endtime + hydrodynamic_timestep
-    ice = res$iceflag
+    ice = res$icefla
     Hi = res$icethickness 
     iceT = res$icemovAvg
     supercooled = res$supercooled
+    kd_light = NULL
   } else {
     u = u_ini
     startTime = 1 
@@ -63,6 +65,7 @@ for (i in 1:total_runtime){
     Hi = 0
     iceT = 6
     supercooled = 0
+    kd_light = NULL
   }
   res <-  run_thermalmodel(u = u, 
                             startTime = startTime, 
@@ -71,7 +74,7 @@ for (i in 1:total_runtime){
                             Hi = Hi, 
                             iceT = iceT,
                             supercooled = supercooled,
-                            kd_light = NULL,
+                            kd_light = kd_light,
                             zmax = zmax,
                             nx = nx,
                             dt = dt,
@@ -84,6 +87,16 @@ for (i in 1:total_runtime){
                            Cd = 0.0008)
   temp[, max(1, (startTime/dt)):(endTime/dt -1)] =  res$temp[,-ncol(res$temp)]
   avgtemp[ max(1, (startTime/dt)):(endTime/dt -1),] <- as.matrix(res$average[-nrow(res$average),])
+  
+  average <- res$average[-nrow(res$average),] %>%
+    mutate(datetime = as.POSIXct(time, origin =startingDate),
+           Date = as.Date(datetime, "%m/%d/%Y")) %>%
+    group_by(Date) %>%
+    summarise_all(mean)
+  
+  ## run C-P-O2 model with input from ''average''
+  ## derive kd value and put this in as input for ''run_thermalmodel'', e.g. 
+  ## '' kd <- 0.5 '' and then change L 59 to '' kd_light = kd '' 
 }
 
 # plotting for checking model output and performance
