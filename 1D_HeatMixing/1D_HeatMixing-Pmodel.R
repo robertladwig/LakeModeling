@@ -37,7 +37,7 @@ u_ini <- initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
                      processed_meteo = meteo_all[[1]])
 
 ### EXAMPLE RUNS
-hydrodynamic_timestep = 24 * 3600
+hydrodynamic_timestep = 24 * dt
 total_runtime <- 365
 startingDate <- meteo_all[[1]]$datetime[1]
 
@@ -51,21 +51,23 @@ for (i in 1:total_runtime){
   if (exists('res')){
     u = res$temp[, ncol(res$temp)]
     startTime = res$endtime
-    endTime =  res$endtime + hydrodynamic_timestep
+    endTime =  res$endtime + hydrodynamic_timestep -1
     ice = res$icefla
     Hi = res$icethickness 
     iceT = res$icemovAvg
     supercooled = res$supercooled
     kd_light = NULL
+    matrix_range = max(1, (startTime/dt)):((endTime/dt))
   } else {
     u = u_ini
-    startTime = 1 
-    endTime = hydrodynamic_timestep
+    startTime = 1
+    endTime = hydrodynamic_timestep - 1
     ice = FALSE
     Hi = 0
     iceT = 6
     supercooled = 0
     kd_light = NULL
+    matrix_range = max(1, (startTime/dt)):((endTime/dt)+1)
   }
   res <-  run_thermalmodel(u = u, 
                             startTime = startTime, 
@@ -85,10 +87,11 @@ for (i in 1:total_runtime){
                             daily_meteo = meteo_all[[1]],
                             secview = meteo_all[[2]],
                            Cd = 0.0008)
-  temp[, max(1, (startTime/dt)):(endTime/dt -1)] =  res$temp[,-ncol(res$temp)]
-  avgtemp[ max(1, (startTime/dt)):(endTime/dt -1),] <- as.matrix(res$average[-nrow(res$average),])
+
+  temp[, matrix_range] =  res$temp
+  avgtemp[matrix_range,] <- as.matrix(res$average)
   
-  average <- res$average[-nrow(res$average),] %>%
+  average <- res$average %>%
     mutate(datetime = as.POSIXct(time, origin =startingDate),
            Date = as.Date(datetime, "%m/%d/%Y")) %>%
     group_by(Date) %>%
@@ -98,6 +101,8 @@ for (i in 1:total_runtime){
   ## derive kd value and put this in as input for ''run_thermalmodel'', e.g. 
   ## '' kd <- 0.5 '' and then change L 59 to '' kd_light = kd '' 
 }
+
+startingDate + avgtemp[,1]
 
 # plotting for checking model output and performance
 plot(seq(1, ncol(temp))*dt/24/3600, temp[1,], col = 'red', type = 'l', 
