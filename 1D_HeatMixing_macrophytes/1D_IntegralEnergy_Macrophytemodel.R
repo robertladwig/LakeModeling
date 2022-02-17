@@ -233,7 +233,7 @@ idx <- (match(as.POSIXct(obs$datetime), as.POSIXct(df.sim$datetime) ))
 
 obs <- obs[which(!is.na(idx)), ]
 
-deps <- seq(1,nrow(um))*dx
+deps <- seq(1,nrow(temp))*dx
 if (min(unique(obs$temp_depth_m)) < min(deps)){
   deps[which.min(deps)] <- min(unique(obs$temp_depth_m)) 
 }
@@ -392,7 +392,7 @@ optim_macro <- function(p, scaling = TRUE, lb, ub){
   
   obs <- obs[which(!is.na(idx)), ]
   
-  deps <- seq(1,nrow(um))*dx
+  deps <- seq(1,nrow(temp))*dx
   if (min(unique(obs$temp_depth_m)) < min(deps)){
     deps[which.min(deps)] <- min(unique(obs$temp_depth_m)) 
   }
@@ -452,6 +452,7 @@ opt <- pureCMAES(par = init.val, fun = optim_macro, lower = rep(0,length(init.va
           scaling = scaling, lb = calib_setup$lb, ub = calib_setup$ub)
   
 val <- wrapper_scales(opt$xmin, lb = calib_setup$lb, ub = calib_setup$ub)
+write.csv(val, 'calib_results.txt', quote = F, row.names = F)
 
 ### OPTIMISED RUN
 temp <- c()
@@ -555,7 +556,7 @@ idx <- (match(as.POSIXct(obs$datetime), as.POSIXct(df.sim$datetime) ))
 
 obs <- obs[which(!is.na(idx)), ]
 
-deps <- seq(1,nrow(um))*dx#deps <-  hyps_all[[2]]
+deps <- seq(1,nrow(temp))*dx #deps <-  hyps_all[[2]]
 if (min(unique(obs$temp_depth_m)) < min(deps)){
   deps[which.min(deps)] <- min(unique(obs$temp_depth_m)) 
 }
