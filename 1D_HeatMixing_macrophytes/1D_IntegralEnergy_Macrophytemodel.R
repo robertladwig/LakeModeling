@@ -233,7 +233,7 @@ idx <- (match(as.POSIXct(obs$datetime), as.POSIXct(df.sim$datetime) ))
 
 obs <- obs[which(!is.na(idx)), ]
 
-deps <-  hyps_all[[2]]
+deps <- seq(1,nrow(um))*dx
 if (min(unique(obs$temp_depth_m)) < min(deps)){
   deps[which.min(deps)] <- min(unique(obs$temp_depth_m)) 
 }
