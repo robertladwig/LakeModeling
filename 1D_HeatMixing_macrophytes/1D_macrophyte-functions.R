@@ -203,7 +203,6 @@ run_thermalmodel <- function(u, startTime, endTime,
                              biomass,
                              Cdplant = 1,
                              ahat = 0.4,
-                             rho_mp = 998.0,
                              km = 0.04,
                              windfactor = 1,
                              shortwavefactor = 1,
@@ -356,7 +355,6 @@ run_thermalmodel <- function(u, startTime, endTime,
       if (dep == 1){
         # PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx)
         PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  *
-                   # abs(calc_dens(u[dep+1])- calc_dens(u[dep])))
                    abs(calc_dens(u[dep+1])- mean(calc_dens(u[1:dep]))))
         # DKE = Hmacrophytes[dep]*(calc_dens(u[dep])* ahat * Cdplant) *Uw(n)^3 * dt  *dx
         DKE = Hmacrophytes[dep]*(rho_plant* ahat * Cdplant) *Uw(n)^3 * dt  *dx
@@ -365,7 +363,6 @@ run_thermalmodel <- function(u, startTime, endTime,
         # PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx +
         #            PEprior)
         PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  *
-                   # abs(calc_dens(u[dep+1])- calc_dens(u[dep]))) + PEprior
                    abs(calc_dens(u[dep+1])- mean(calc_dens(u[1:dep])))) + PEprior
         DKEprior = DKE
         # DKE = Hmacrophytes[dep]*(calc_dens(u[dep]) * ahat * Cdplant) *Uw(n)^3 * dt  *dx + DKEprior # rho_mp
@@ -540,3 +537,7 @@ run_thermalmodel <- function(u, startTime, endTime,
               'average' = df.avg.sim))
 }
 
+wrapper_scales <- function(x, lb, ub){
+  y <-  lb+(ub-lb)/(10)*(x)
+  return(y)
+}

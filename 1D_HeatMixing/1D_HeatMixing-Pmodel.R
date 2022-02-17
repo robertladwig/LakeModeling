@@ -86,23 +86,21 @@ for (i in 1:total_runtime){
                             volume = hyps_all[[3]], # volume
                             daily_meteo = meteo_all[[1]],
                             secview = meteo_all[[2]],
-                           Cd = 0.0008)
+                            Cd = 0.0008)
 
   temp[, matrix_range] =  res$temp
   avgtemp[matrix_range,] <- as.matrix(res$average)
   
   average <- res$average %>%
-    mutate(datetime = as.POSIXct(time, origin =startingDate),
-           Date = as.Date(datetime, "%m/%d/%Y")) %>%
-    group_by(Date) %>%
+    mutate(datetime = as.POSIXct(startingDate + time),
+           Date = as.Date(datetime, format = "%m/%d/%Y")) %>%
+    # group_by(datetime) %>%
     summarise_all(mean)
   
   ## run C-P-O2 model with input from ''average''
   ## derive kd value and put this in as input for ''run_thermalmodel'', e.g. 
   ## '' kd <- 0.5 '' and then change L 59 to '' kd_light = kd '' 
 }
-
-startingDate + avgtemp[,1]
 
 # plotting for checking model output and performance
 plot(seq(1, ncol(temp))*dt/24/3600, temp[1,], col = 'red', type = 'l', 
@@ -126,6 +124,8 @@ ggplot(avgtemp) +
   theme_minimal() 
 ggplot(avgtemp) +
   geom_line(aes(time, thermoclineDep)) +
+  geom_line(aes(time, stratFlag, col = as.factor(stratFlag))) +
+  scale_y_reverse() +
   theme_minimal() 
 
 df <- data.frame(cbind(time, t(temp)) )
