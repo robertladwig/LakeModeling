@@ -34,12 +34,14 @@
 #' https://doi.org/10.1016/j.ecolmodel.2007.03.018 
 
 ## remove everything from workspace
-rm(list = ls())
+#rm(list = ls())
 
 # set wd to current dir of script
 setwd(dirname(rstudioapi::getSourceEditorContext()$path))
 
 source('1D_macrophyte-functions.R')
+
+#devtools::install_github("aemon-j/gotmtools")
 
 ## colors for plotting
 library(tidyverse)
@@ -74,8 +76,8 @@ u <- initial_profile(initfile = 'bc/temp_profiles_2020.csv',
 
 
 # macrophyte
-macro_all <- get_macrophyte(canopyfile = 'bc/canopy.csv',
-                            biomassfile = 'bc/biomass.csv',
+macro_all <- get_macrophyte(canopyfile = 'bc/canopy_F19.csv',
+                            biomassfile = 'bc/biomass_F19.csv',
                             processed_meteo = meteo_all[[1]])
 
 nt = as.double(max(meteo_all[[1]]$dt)) # maximum time duration
@@ -151,7 +153,7 @@ res <- run_thermalmodel(u = u,
                         canpy = macro_all[[1]], # canopy height
                         biomass = macro_all[[2]], # macrophyte density
                         Cd = 0.0013, # wind momentum drag
-                        km = 0.01, #0.008,#0.04, # macrophyte light extinction
+                        km = 0.2, #0.008,#0.04, # macrophyte light extinction
                         Cdplant = 1,#1e3, # macrophyte momentum drag
                         ahat = 0.5, # macrophyte area to volume
                         reflect = 0.6, 
