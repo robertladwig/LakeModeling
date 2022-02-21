@@ -448,7 +448,7 @@ opt <- pureCMAES(par = init.val, fun = optim_macro, lower = rep(0,length(init.va
           upper = rep(10,length(init.val)), 
           sigma = 0.5, 
           stopfitness = 1, 
-          stopeval = 100,
+          stopeval = 500,
           scaling = scaling, lb = calib_setup$lb, ub = calib_setup$ub)
   
 val <- wrapper_scales(opt$xmin, lb = calib_setup$lb, ub = calib_setup$ub)
@@ -600,7 +600,7 @@ ggplot() +
   geom_line(data = m.df.sim.interp, aes(datetime, value, col = group)) +
   geom_text(data=rmse, aes( as.POSIXct("2020-05-26 10:30:00 CDT"), y=17, label=round(fit,2)),                 
             color="black", size =3) +
-  facet_wrap(~ variable) +
+  facet_wrap(~ variable, scales = 'free') +
   xlab('') + ylab('Temp. (deg C)')+
   theme_bw()
 ggsave(filename = paste0('fieldcomparison.png'), width = 15, height = 8, units = 'in')

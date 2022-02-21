@@ -353,17 +353,17 @@ run_thermalmodel <- function(u, startTime, endTime,
     maxdep = 1
     for (dep in 1:(nx-1)){
       if (dep == 1){
-        # PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx)
-        PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  *
-                   abs(calc_dens(u[dep+1])- mean(calc_dens(u[1:dep]))))
+        PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx)
+        # PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  *
+        #            abs(calc_dens(u[dep+1])- mean(calc_dens(u[1:dep]))))
         # DKE = Hmacrophytes[dep]*(calc_dens(u[dep])* ahat * Cdplant) *Uw(n)^3 * dt  *dx
         DKE = Hmacrophytes[dep]*(rho_plant* ahat * Cdplant) *Uw(n)^3 * dt  *dx
       } else {
         PEprior = PE
-        # PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx +
-        #            PEprior)
-        PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  *
-                   abs(calc_dens(u[dep+1])- mean(calc_dens(u[1:dep])))) + PEprior
+        PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx +
+                   PEprior)
+        # PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  *
+                   # abs(calc_dens(u[dep+1])- mean(calc_dens(u[1:dep])))) + PEprior
         DKEprior = DKE
         # DKE = Hmacrophytes[dep]*(calc_dens(u[dep]) * ahat * Cdplant) *Uw(n)^3 * dt  *dx + DKEprior # rho_mp
         DKE = Hmacrophytes[dep]*(rho_plant * ahat * Cdplant) *Uw(n)^3 * dt  *dx + DKEprior # rho_mp
