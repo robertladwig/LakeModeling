@@ -1,8 +1,10 @@
 import numpy as np
+import pandas as pd
+from math import pi, exp
 
 ## function to calculate density from temperature
 def calc_dens(wtemp):
-    dens = (999.842594 + (6.793952 * 1e-2 * wtemp) - (9.095290 * 1e-3 *wtemp**2) + 
+    dens = (999.842594 + (6.793952 * 1e-2 * wtemp) - (9.095290 * 1e-3 *wtemp**2) +
       (1.001685 * 1e-4 * wtemp**3) - (1.120083 * 1e-6* wtemp**4) + 
       (6.536336 * 1e-9 * wtemp**5))
     return dens
@@ -23,3 +25,40 @@ def eddy_diffusivity(rho, depth, g, rho_0, ice, area):
     
     kz = ak * (buoy)**(-0.43)
     return(kz)
+  
+def provide_meteorology(meteofile, secchifile, windfactor):
+    meteo = pd.read_csv(meteofile)
+    daily_meteo = meteo
+    daily_meteo['date'] = pd.to_datetime(daily_meteo['datetime'])
+    # TODO !!!!!!!!!!!!!!!!!! Implement actual cloud cover function
+    daily_meteo['Cloud_Cover'] = 0
+    daily_meteo['dt'] = (daily_meteo['date'] - daily_meteo['date'][0]).astype('timedelta64[s]') + 1
+    daily_meteo['ea'] = (daily_meteo['Relative_Humidity_percent'] * 
+      (4.596 * np.exp((17.27*(daily_meteo['Air_Temperature_celsius'])) /
+      (237.3 + (daily_meteo['Air_Temperature_celsius']) ))) / 100)
+    daily_meteo['ea'] = ((101.325 * np.exp(13.3185 * (1 - (373.15 / (daily_meteo['Air_Temperature_celsius'] + 273.15))) -
+      1.976 * (1 - (373.15 / (daily_meteo['Air_Temperature_celsius'] + 273.15)))**2 -
+      0.6445 * (1 - (373.15 / (daily_meteo['Air_Temperature_celsius'] + 273.15)))**3 -
+      0.1229 * (1 - (373.15 / (daily_meteo['Air_Temperature_celsius'] + 273.15)))**4)) * daily_meteo['Relative_Humidity_percent']/100)
+    daily_meteo['ea'] = (daily_meteo['Relative_Humidity_percent']/100) * 10**(9.28603523 - 2322.37885/(daily_meteo['Air_Temperature_celsius'] + 273.15))
+    startDate = pd.to_datetime(daily_meteo.loc[0, 'date'])
+    
+    ## calibration parameters
+    daily_meteo['Shortwave_Radiation_Downwelling_wattPerMeterSquared'] = daily_meteo['Shortwave_Radiation_Downwelling_wattPerMeterSquared'] 
+    daily_meteo['Ten_Meter_Elevation_Wind_Speed_meterPerSecond'] = daily_meteo['Ten_Meter_Elevation_Wind_Speed_meterPerSecond'] * windfactor # wind speed multiplier
+    
+    ## light
+    # Package ID: knb-lter-ntl.31.30 Cataloging System:https://pasta.edirepository.org.
+    # Data set title: North Temperate Lakes LTER: Secchi Disk Depth; Other Auxiliary Base Crew Sample Data 1981 - current.
+    secview0 = pd.read_csv(secchifile)
+    secview0['sampledate'] = pd.to_datetime(secview0['sampledate'])
+    secview = secview0.loc[secview0['sampledate'] >= startDate]
+    if secview['sampledate'].min() >= startDate:
+      firstVal = secview.loc[secview['sampledate'] == secview['sampledate'].min(), 'secnview'].values[0]
+      firstRow = pd.DataFrame(data={'sampledate': [startDate], 'secnview':[firstVal]})
+      secview = pd.concat([firstRow, secview], ignore_index=True)
+    secview['dt'] = (secview['sampledate'] - secview['sampledate'][0]).astype('timedelta64[s]') + 1
+    secview['kd'] = 1.7 / secview['secnview']
+    secview['kd'] = secview.set_index('sampledate')['kd'].interpolate(method="linear").values
+    
+    return([daily_meteo, secview])
