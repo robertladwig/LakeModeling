@@ -430,7 +430,9 @@ optim_macro <- function(p, scaling = TRUE, lb, ub){
     rmse <- rbind(rmse, data.frame('variable' = i,
                                    'fit' = sqrt((sum((o$value-s$value)**2))/nrow(o))))
   }
-  return(sum(rmse$fit, na.rm = T))
+  rmse_fit = rmse %>%
+    filter(variable %in% c('temp_c.0', 'temp_c.1', 'temp_c.2'))
+  return(sum(rmse_fit$fit, na.rm = T))
 }
 
 
@@ -448,7 +450,7 @@ opt <- pureCMAES(par = init.val, fun = optim_macro, lower = rep(0,length(init.va
           upper = rep(10,length(init.val)), 
           sigma = 0.5, 
           stopfitness = 1, 
-          stopeval = 500,
+          stopeval = 100,
           scaling = scaling, lb = calib_setup$lb, ub = calib_setup$ub)
   
 val <- wrapper_scales(opt$xmin, lb = calib_setup$lb, ub = calib_setup$ub)

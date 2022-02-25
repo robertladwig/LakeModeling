@@ -171,7 +171,8 @@ run_thermalmodel <- function(u, startTime, endTime,
                              dt, # 24 hours times 60 min/hour times 60 seconds/min
                              dx,
                              daily_meteo,
-                             secview){ # spatial step){
+                             secview,
+                             pgdl_mode = 'off'){ # spatial step){
   
   ## linearization of driver data, so model can have dynamic step
   Jsw <- approxfun(x = daily_meteo$dt, y = daily_meteo$Shortwave_Radiation_Downwelling_wattPerMeterSquared, method = "linear", rule = 2)
@@ -191,9 +192,15 @@ run_thermalmodel <- function(u, startTime, endTime,
   therm.z <- rep(NA, length =length( seq(startTime, endTime, dt)/dt))
   mix.z <- rep(NA, length = length( seq(startTime, endTime, dt)/dt))
   Him <- rep(NA, length = length( seq(startTime, endTime, dt)/dt))
+  if (pgdl_mode == 'on'){
+    um_diff <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
+    um_mix <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
+    um_conv <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
+    um_ice <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
+  }
   
   if (!is.null(kd_light)){
-    kd <- approxfun(x = seq(1, endTime, 1), y = rep(kd_light, (endTime)), method = "linear", rule = 2)
+    kd <- approxfun(x = seq(startTime, endTime, 1), y = rep(kd_light, length(seq(startTime, endTime, 1))), method = "linear", rule = 2)
   } 
   
   start.time <- Sys.time()
@@ -287,6 +294,10 @@ run_thermalmodel <- function(u, startTime, endTime,
                                                            Hg[nx]/area[nx]) * dt
     }
     
+    if (pgdl_mode == 'on'){
+      um_diff[, match(n, seq(startTime, endTime, dt))] <- u
+    }
+    
     ## (3) TURBULENT MIXING OF MIXED LAYER
     # the mixed layer depth is determined for each time step by comparing kinetic 
     # energy available from wind and the potential energy required to completely 
@@ -332,6 +343,9 @@ run_thermalmodel <- function(u, startTime, endTime,
     # u[1:maxdep] = (u[1:(maxdep)] %*% volume[1:(maxdep)])/sum(volume[1:(maxdep)]) #mean(u[1:maxdep])
     mix[match(n, seq(startTime, endTime, dt))] <- KE/PE #append(mix, KE/PE)
     therm.z[match(n, seq(startTime, endTime, dt))] <- maxdep #append(therm.z, maxdep)
+    if (pgdl_mode == 'on'){
+      um_mix[, match(n, seq(startTime, endTime, dt))] <- u
+    }
     
     ## (4) DENSITY INSTABILITIES
     # convective overturn: Convective mixing is induced by an unstable density 
@@ -360,6 +374,9 @@ run_thermalmodel <- function(u, startTime, endTime,
     n2 <- 9.81/mean(calc_dens(u)) * (lead(dens_u_n2) - lag(dens_u_n2))/dx
     max.n2 <- ifelse(max(n2, na.rm = T) > 1E-4, which.max(n2) * dx, dx * nx)
     mix.z[match(n, seq(startTime, endTime, dt))] <- max.n2
+    if (pgdl_mode == 'on'){
+      um_conv[, match(n, seq(startTime, endTime, dt))] <- u
+    }
     
     
     
@@ -418,6 +435,9 @@ run_thermalmodel <- function(u, startTime, endTime,
     
     n2m[, match(n, seq(startTime, endTime, dt))] <- n2
     um[, match(n, seq(startTime, endTime, dt))] <- u
+    if (pgdl_mode == 'on'){
+      um_ice[, match(n, seq(startTime, endTime, dt))] <- u
+    }
     
 
   }
@@ -474,17 +494,37 @@ run_thermalmodel <- function(u, startTime, endTime,
                            'stratFlag' = stratFlag,
                            'thermoclineDep' = bf.sim)
   
-  return(list('temp'  = um,
-              'diff' = kzm,
-              'mixing' = mix,
-              'buoyancy' = n2m,
-              'icethickness' = Hi,
-              'iceflag' = ice,
-              'icemovAvg' = iceT,
-              'supercooled' = supercooled,
-              'mixingdepth' = mix.z,
-              'thermoclinedepth' = therm.z,
-              'endtime' = endTime,
-              'average' = df.avg.sim))
+  dat = list('temp'  = um,
+             'diff' = kzm,
+             'mixing' = mix,
+             'buoyancy' = n2m,
+             'icethickness' = Hi,
+             'iceflag' = ice,
+             'icemovAvg' = iceT,
+             'supercooled' = supercooled,
+             'mixingdepth' = mix.z,
+             'thermoclinedepth' = therm.z,
+             'endtime' = endTime,
+             'average' = df.avg.sim)
+  if (pgdl_mode == 'on'){
+    dat = list('temp'  = um,
+               'diff' = kzm,
+               'mixing' = mix,
+               'buoyancy' = n2m,
+               'icethickness' = Hi,
+               'iceflag' = ice,
+               'icemovAvg' = iceT,
+               'supercooled' = supercooled,
+               'mixingdepth' = mix.z,
+               'thermoclinedepth' = therm.z,
+               'endtime' = endTime,
+               'average' = df.avg.sim,
+               'temp_diff' = um_diff,
+               'temp_mix' = um_mix,
+               'temp_conv' = um_conv,
+               'temp_ice' = um_ice)
+  }
+  
+  return(dat)
 }
 

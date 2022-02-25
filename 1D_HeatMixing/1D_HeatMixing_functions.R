@@ -193,7 +193,7 @@ run_thermalmodel <- function(u, startTime, endTime,
   Him <- rep(NA, length = length( seq(startTime, endTime, dt)/dt))
   
   if (!is.null(kd_light)){
-    kd <- approxfun(x = seq(1, endTime, 1), y = rep(kd_light, (endTime)), method = "linear", rule = 2)
+    kd <- approxfun(x = seq(startTime, endTime, 1), y = rep(kd_light, length(seq(startTime, endTime, 1))), method = "linear", rule = 2)
   } 
   
   start.time <- Sys.time()
