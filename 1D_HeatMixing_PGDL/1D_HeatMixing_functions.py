@@ -96,3 +96,34 @@ def get_hypsography(hypsofile, dx, nx):
   volume = np.append(volume, 1000)
   
   return([area, depth, volume])
+
+def longwave(cc, sigma, Tair, ea, emissivity, Jlw):  # longwave radiation into
+  Tair = Tair + 273.15
+  p = (1.33 * ea/Tair)
+  Ea = 1.24 * (1 + 0.17 * cc**2) * p**(1/7)
+  lw = emissivity * Ea *sigma * Tair**4
+  return(lw)
+
+def backscattering(emissivity, sigma, Twater, eps): # backscattering longwave 
+  # radiation from the lake
+  Twater = Twater + 273.15
+  back = -1 * (eps * sigma * (Twater)**4) 
+  return(back)
+
+def sensible(p2, B, Tair, Twater, Uw): # convection / sensible heat
+  Twater = Twater + 273.15
+  Tair = Tair + 273.15
+  fu = 4.4 + 1.82 * Uw + 0.26 *(Twater - Tair)
+  sensible = -1 * ( p2 * B * fu * (Twater - Tair)) 
+  return(sensible)
+
+def latent(Tair, Twater, Uw, p2, pa, ea, RH): # evaporation / latent heat
+  Twater = Twater + 273.15
+  Tair = Tair + 273.15
+  Pressure = pa / 100
+  fu = 4.4 + 1.82 * Uw + 0.26 *(Twater - Tair)
+  fw = 0.61 * (1 + 10**(-6) * Pressure * (4.5 + 6 * 10**(-5) * Twater**2))
+  ew = fw * 10 * ((0.7859+0.03477* Twater)/(1+0.00412* Twater))
+  latent = -1* fu * p2 * (ew - ea)# * 1.33) // * 1/6
+  return(latent)
+
