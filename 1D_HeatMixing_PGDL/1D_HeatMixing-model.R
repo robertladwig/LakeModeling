@@ -198,13 +198,13 @@ library(ncdf4)
 library(gotmtools)
 # GOTM
 # GOTMr::run_gotm('alt_lakeModels/GOTM/')
-nc <- nc_open(file.path('/Users/robertladwig/Documents/CoPaper/Dugan2021/salinization_lakestratification/numerical/mendota/3_scenarios/1_null', 
+nc <- nc_open(file.path('alt_lakeModels/', 
                                "GOTM", "output", "output.nc"))
 nc_close(nc)
 diff <- gotmtools::get_vari(ncdf = file.path('alt_lakeModels/', 
                                   "GOTM", "output", "output.nc"), var = "avh",
                  print = FALSE)
-z <- get_vari(ncdf = file.path('/Users/robertladwig/Documents/CoPaper/Dugan2021/salinization_lakestratification/numerical/mendota/3_scenarios/1_null', 
+z <- gotmtools::get_vari(ncdf = file.path('alt_lakeModels/', 
                                "GOTM", "output", "output.nc"), var = "z",
               print = FALSE)
 
@@ -217,7 +217,7 @@ depths <- depths[order(-depths)]
 
 message("Interpolating GOTM temp to include obs depths... ",
         paste0("[", Sys.time(), "]"))
-got <- setmodDepths(diff, z, depths = depths, print = T)
+got <- gotmtools::setmodDepths(diff, z, depths = depths, print = T)
 message("Finished interpolating! ",
         paste0("[", Sys.time(), "]"))
 
@@ -226,8 +226,9 @@ got <- got[, c(1, (27:2))]
 str_depths <- abs(as.numeric(colnames(got)[2:ncol(got)]))
 colnames(got) <- c("datetime", paste("diffM2s-2_", str_depths, sep = ""))
 
-got <- got %>%
+df <- as.data.frame(got) %>%
   filter(datetime >=  '2009-06-01 00:00:00' & time <= '2009-09-01 00:00:00')
+write.csv(df, file = 'output/diff_gotm.csv', row.names = F)
 
 # Simstrat
 SimstratR::run_simstrat('alt_lakeModels/Simstrat/')
@@ -276,4 +277,6 @@ if(length(depths) != (ncol(diff) - 1)){
   colnames(diff) <- c("datetime", paste0("diffM2s-2_", str_depths))
 }
 
-
+df <- diff %>%
+  filter(datetime >=  '2009-06-01 00:00:00' & time <= '2009-09-01 00:00:00')
+write.csv(df, file = 'output/diff_simstrat.csv', row.names = F)
