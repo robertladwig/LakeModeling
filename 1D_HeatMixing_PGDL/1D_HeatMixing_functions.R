@@ -213,7 +213,7 @@ run_thermalmodel <- function(u, startTime, endTime,
     un = u # prior temperature values
     if (pgdl_mode == 'on'){
       dens_u_n2 = calc_dens(u) 
-      n2 <- 9.81/mean(calc_dens(u)) * (lead(dens_u_n2) - lag(dens_u_n2))/dx
+      n2 <- 9.81/mean(calc_dens(u)) * (lead(dens_u_n2) - dens_u_n2)/dx
       n2_pgdl[, match(n, seq(startTime, endTime, dt))] <- n2
     }
     kz = eddy_diffusivity(calc_dens(un), depth, 9.81, 998.2, ice, area) / 86400
