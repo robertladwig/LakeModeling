@@ -199,7 +199,7 @@ run_thermalmodel <- function(u, startTime, endTime,
     um_ice <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
     n2_pgdl <- matrix(NA, ncol = length( seq(startTime, endTime, dt)/dt), nrow = nx)
     
-    meteo_pgdl <- matrix(NA, ncol = length( seq(startTime, endTime, dt)/dt), nrow = 8)
+    meteo_pgdl <- matrix(NA, ncol = length( seq(startTime, endTime, dt)/dt), nrow = 9)
   }
   
   if (!is.null(kd_light)){
@@ -455,6 +455,7 @@ run_thermalmodel <- function(u, startTime, endTime,
       meteo_pgdl[6, match(n, seq(startTime, endTime, dt))] <-   kd(n)
       meteo_pgdl[7, match(n, seq(startTime, endTime, dt))] <-   shear
       meteo_pgdl[8, match(n, seq(startTime, endTime, dt))] <-   tau
+      meteo_pgdl[9, match(n, seq(startTime, endTime, dt))] <-   max(area, na.rm = T)
 
     }
     

@@ -56,7 +56,7 @@ temp_ice <- matrix(NA, ncol = (total_runtime * hydrodynamic_timestep/ dt) ,
 diff <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                nrow = nx)
 meteo <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
-               nrow = 8)
+               nrow = 9)
 buoyancy <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                nrow = nx)
 if (exists('res')) {remove('res')}
@@ -200,6 +200,24 @@ df$time <- time
 df <- df %>%
   filter(time >=  '2009-06-01 00:00:00' & time <= '2009-09-01 00:00:00')
 write.csv(df, file = 'output/diff.csv', row.names = F)
+
+df <- data.frame(cbind(time, t(buoyancy)) )
+colnames(df) <- c("time", as.character(paste0('n2S-2_',seq(1,nrow(temp)))))
+df$time <- time
+df <- df %>%
+  filter(time >=  '2009-06-01 00:00:00' & time <= '2009-09-01 00:00:00')
+write.csv(df, file = 'output/buoyancy.csv', row.names = F)
+
+df <- data.frame(cbind(time, t(meteo)) )
+colnames(df) <- c("time", "AirTemp_degC", "Longwave_Wm-2",
+                  "Latent_Wm-2", "Sensible_Wm-2", "Shortwave_Wm-2",
+                  "lightExtinct_m-1","ShearVelocity_mS-1", "ShearStress_Nm-2",
+                  "Area_m2")
+df$time <- time
+df <- df %>%
+  filter(time >=  '2009-06-01 00:00:00' & time <= '2009-09-01 00:00:00')
+write.csv(df, file = 'output/meteorology_input.csv', row.names = F)
+
 
 library(ncdf4)
 library(gotmtools)
