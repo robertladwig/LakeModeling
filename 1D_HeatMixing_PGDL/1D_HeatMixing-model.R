@@ -55,6 +55,10 @@ temp_ice <- matrix(NA, ncol = (total_runtime * hydrodynamic_timestep/ dt) ,
                     nrow = nx)
 diff <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                nrow = nx)
+meteo <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+               nrow = 8)
+buoyancy <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+               nrow = nx)
 if (exists('res')) {remove('res')}
 
 for (i in 1:total_runtime){
@@ -106,6 +110,9 @@ for (i in 1:total_runtime){
   temp_mix[, matrix_range] =  res$temp_mix
   temp_conv[, matrix_range] =  res$temp_conv
   temp_ice[, matrix_range] =  res$temp_ice
+  buoyancy[, matrix_range] =  res$temp
+  meteo[, matrix_range] =  res$meteo_input
+  buoyancy[, matrix_range] = res$buoyancy_pgdl
   
   average <- res$average %>%
     mutate(datetime = as.POSIXct(startingDate + time),

@@ -197,6 +197,9 @@ run_thermalmodel <- function(u, startTime, endTime,
     um_mix <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
     um_conv <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
     um_ice <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
+    n2_pgdl <- matrix(NA, ncol = length( seq(startTime, endTime, dt)/dt), nrow = nx)
+    
+    meteo_pgdl <- matrix(NA, ncol = length( seq(startTime, endTime, dt)/dt), nrow = 8)
   }
   
   if (!is.null(kd_light)){
@@ -208,6 +211,11 @@ run_thermalmodel <- function(u, startTime, endTime,
   for (n in seq(startTime, endTime, dt)){#1:(floor(endTime/dt - startTime/dt))){  #iterate through time 1:floor(nt/dt)
     
     un = u # prior temperature values
+    if (pgdl_mode == 'on'){
+      dens_u_n2 = calc_dens(u) 
+      n2 <- 9.81/mean(calc_dens(u)) * (lead(dens_u_n2) - lag(dens_u_n2))/dx
+      n2_pgdl[, match(n, seq(startTime, endTime, dt))] <- n2
+    }
     kz = eddy_diffusivity(calc_dens(un), depth, 9.81, 998.2, ice, area) / 86400
     
     if (ice & Tair(n) <= 0){
@@ -437,6 +445,17 @@ run_thermalmodel <- function(u, startTime, endTime,
     um[, match(n, seq(startTime, endTime, dt))] <- u
     if (pgdl_mode == 'on'){
       um_ice[, match(n, seq(startTime, endTime, dt))] <- u
+      
+      meteo_pgdl[1, match(n, seq(startTime, endTime, dt))] <-  Tair(n)
+      meteo_pgdl[2, match(n, seq(startTime, endTime, dt))] <-   longwave(cc = CC(n), sigma = sigma, Tair = Tair(n), ea = ea(n), emissivity = emissivity, Jlw = Jlw(n)) -
+        backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps)
+      meteo_pgdl[3, match(n, seq(startTime, endTime, dt))] <-   latent(Tair = Tair(n), Twater = un[1], Uw = Uw(n), p2 = p2, pa = Pa(n), ea=ea(n), RH = RH(n))
+      meteo_pgdl[4, match(n, seq(startTime, endTime, dt))] <-   sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[1], Uw = Uw(n))
+      meteo_pgdl[5, match(n, seq(startTime, endTime, dt))] <-   Jsw(n)
+      meteo_pgdl[6, match(n, seq(startTime, endTime, dt))] <-   kd(n)
+      meteo_pgdl[7, match(n, seq(startTime, endTime, dt))] <-   shear
+      meteo_pgdl[8, match(n, seq(startTime, endTime, dt))] <-   tau
+
     }
     
 
@@ -522,7 +541,9 @@ run_thermalmodel <- function(u, startTime, endTime,
                'temp_diff' = um_diff,
                'temp_mix' = um_mix,
                'temp_conv' = um_conv,
-               'temp_ice' = um_ice)
+               'temp_ice' = um_ice,
+               'meteo_input' = meteo_pgdl,
+               'buoyancy_pgdl' = n2_pgdl)
   }
   
   return(dat)
