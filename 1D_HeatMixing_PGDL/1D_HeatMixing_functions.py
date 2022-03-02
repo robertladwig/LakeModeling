@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
-from math import pi, exp
+from math import pi, exp, sqrt
 from scipy.interpolate import interp1d
+from copy import deepcopy
 import datetime
 
 ## function to calculate density from temperature
@@ -69,7 +70,7 @@ def provide_meteorology(meteofile, secchifile, windfactor):
   
 def initial_profile(initfile, nx, dx, depth, processed_meteo):
   meteo = processed_meteo
-  startDate = meteo['date'].min()
+  startDate = meteo['sampledate'].min()
   obs = pd.read_csv(initfile)
   obs['datetime'] = pd.to_datetime(obs['datetime'])
   obs['ditt'] = abs(obs['datetime'] - startDate)
@@ -208,7 +209,7 @@ def run_thermalmodel(u, startTime, endTime,
   
   times = np.arange(startTime, endTime, dt)
   for idn, n in enumerate(times):
-    un = u
+    un = deepcopy(u)
     dens_u_n2 = calc_dens(u)
     time_ind = np.where(times == n)
     print(idn)
@@ -223,7 +224,7 @@ def run_thermalmodel(u, startTime, endTime,
       kzn = kz
       absorp = 1 - 0.7
       infra = 1 - absorp
-    elif (ice & Tair(n) >= 0):
+    elif (ice and Tair(n) >= 0):
       kzn = kz
       absorp = 1 - 0.3
       infra = 1 - absorp
@@ -233,5 +234,55 @@ def run_thermalmodel(u, startTime, endTime,
       infra = 1 - absorp
     
     kzm[:,idn] = kzn
+    
+    ## (1) Heat addition
+    # surface heat flux
+    Q = (absorp * Jsw(n) + longwave(cc = CC(n), sigma = sigma, Tair = Tair(n), ea = ea(n), emissivity = emissivity, Jlw = Jlw(n)) + #longwave(emissivity = emissivity, Jlw = Jlw(n)) +
+            backscattering(emissivity = emissivity, sigma = sigma, Twater = un[0], eps = eps) +
+            latent(Tair = Tair(n), Twater = un[0], Uw = Uw(n), p2 = p2, pa = Pa(n), ea=ea(n), RH = RH(n)) + 
+            sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[0], Uw = Uw(n)))  
+    
+    # heat addition over depth
+    H =  (1- infra) * (Jsw(n))  * np.exp(-(kd(n) ) * depth)
+    Hg = (area[:-1]-area[1:])/dx * Hgeo/(4181 * calc_dens(un[0]))
+    Hg = np.append(Hg, Hg.min())
+    
+    ## (2) DIFFUSION
+    if scheme == 'implicit':
+      # TODO: implement / figure out this
       
+    if scheme == 'explicit':
+      # surface layer
+      u[0] = (un[0] + 
+        (Q * area[0]/(dx)*1/(4184 * calc_dens(un[0]) ) + abs(H[0+1]-H[0]) * area[0]/(dx) * 1/(4184 * calc_dens(un[0]) ) + 
+        Hg[0]) * dt/area[0])
+      # all layers in between
+      for i in range(1,(nx-1)):
+        print(i)
+        u[i] = (un[i] + (area[i] * kzn[i] * 1 / dx**2 * (un[i+1] - 2 * un[i] + un[i-1]) +
+          abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ) + Hg[i])* dt/area[i])
+      # bottom layer
+      u[(nx-1)] = (un[(nx-1)] +
+        abs(H[(nx-1)]-H[(nx-1)-1]) * area[(nx-1)]/(area[(nx-1)]*dx) * 1/(4181 * calc_dens(un[(nx-1)]) +
+        Hg[(nx-1)]/area[(nx-1)]) * dt)
+                                                           
+     if pgdl_mode == 'on':
+      um_diff[:, idn] = u
       
+    ## (3) TURBULENT MIXING OF MIXED LAYER
+    # the mixed layer depth is determined for each time step by comparing kinetic 
+    # energy available from wind and the potential energy required to completely 
+    # mix the water column to a given depth
+    Zcv = np.sum(depth * area) / sum(area)  # center of volume
+    tau = 1.225 * Cd * Uw(n) ** 2 # wind shear is air density times wind velocity 
+    if (Uw(n) <= 15):
+      c10 = 0.0005 * sqrt(Uw(n))
+    else:
+      c10 = 0.0026
+      
+    shear = sqrt((c10 * calc_dens(un[0]))/1.225) *  Uw(n) # shear velocity
+    # coefficient times wind velocity squared
+    KE = shear *  tau * dt # kinetic energy as function of wind
+    
+    if ice:
+      KE = KE * KEice
