@@ -162,7 +162,6 @@ def run_thermalmodel(u, startTime, endTime,
   KEice=1/1000,
   Ice_min=0.1,
   pgdl_mode='off'):
-  return(1)
   
   ## linearization of driver data, so model can have dynamic step
   Jsw_fillvals = tuple(daily_meteo.Shortwave_Radiation_Downwelling_wattPerMeterSquared.values[[0, -1]])
@@ -188,7 +187,7 @@ def run_thermalmodel(u, startTime, endTime,
   nCol = len(step_times)
   um = np.full([nx, nCol], np.nan)
   kzm = np.full([nx, nCol], np.nan)
-  n2m = np.full([nx, nCol], np.nan)
+  n2m = np.full([(nx-1), nCol], np.nan)
   mix = np.full([1,nCol], np.nan)
   therm_z = np.full([1,nCol], np.nan)
   mix_z = np.full([1,nCol], np.nan)
@@ -205,7 +204,7 @@ def run_thermalmodel(u, startTime, endTime,
   if not kd_light is None:
     def kd(n): # using this shortcut for now / testing if it works
       return kd_light
-    
+
   start_time = datetime.datetime.now()
   
   times = np.arange(startTime, endTime, dt)
@@ -213,8 +212,8 @@ def run_thermalmodel(u, startTime, endTime,
     un = deepcopy(u)
     dens_u_n2 = calc_dens(u)
     time_ind = np.where(times == n)
-    print(idn)
-    print(n)
+    # print(idn)
+    # print(n)
     if pgdl_mode == 'on':
       n2 = 9.81/np.mean(dens_u_n2) * (dens_u_n2[1:] - dens_u_n2[:-1])/dx
       n2_pgdl[:,idn] = np.concatenate([n2, np.array([np.nan])])
@@ -250,10 +249,9 @@ def run_thermalmodel(u, startTime, endTime,
     
     ## (2) DIFFUSION
     if scheme == 'implicit':
-      # TODO: implement / figure out this
-      
+      print('sorry, implicit method not implemented')
+    # TODO: implement / figure out this
     if scheme == 'explicit':
-      # surface layer
       u[0] = (un[0] + 
         (Q * area[0]/(dx)*1/(4184 * calc_dens(un[0]) ) + abs(H[0+1]-H[0]) * area[0]/(dx) * 1/(4184 * calc_dens(un[0]) ) + 
         Hg[0]) * dt/area[0])
@@ -266,7 +264,7 @@ def run_thermalmodel(u, startTime, endTime,
       abs(H[(nx-1)]-H[(nx-1)-1]) * area[(nx-1)]/(area[(nx-1)]*dx) * 1/(4181 * calc_dens(un[(nx-1)]) +
       Hg[(nx-1)]/area[(nx-1)]) * dt)
                                                            
-     if pgdl_mode == 'on':
+    if pgdl_mode == 'on':
       um_diff[:, idn] = u
       
     ## (3) TURBULENT MIXING OF MIXED LAYER
@@ -322,7 +320,7 @@ def run_thermalmodel(u, startTime, endTime,
     dens_u = calc_dens(u) 
     diff_dens_u = np.diff(dens_u) 
     diff_dens_u[abs(diff_dens_u) <= densThresh] = 0
-    while np.any(diff_dens_u < 0)
+    while np.any(diff_dens_u < 0):
       dens_u = calc_dens(u)
       for dep in range(nx-1):
         if dens_u[dep+1] < dens_u[dep] and abs(dens_u[dep+1] - dens_u[dep]) >= densThresh:
@@ -339,9 +337,9 @@ def run_thermalmodel(u, startTime, endTime,
       max_n2 = depth[np.argmax(n2)]
     else:
       max_n2 = np.max(depth)
-    mix_z[0, idx] = max_n2
+    mix_z[0, idn] = max_n2
     if pgdl_mode == 'on':
-      um_conv[:, idx] = u
+      um_conv[:, idn] = u
       
       
     ## (5) ICE FORMATION
@@ -393,3 +391,77 @@ def run_thermalmodel(u, startTime, endTime,
     elif ice == True and Hi < Ice_min:
       ice = False
     
+    n2m[:,idn] = n2
+    um[:,idn] = u
+    
+    if pgdl_mode == 'on':
+      um_ice[:, idn] = u
+      meteo_pgdl[0, idn] = Tair(n)
+      meteo_pgdl[1, idn] = (longwave(cc = CC(n), sigma = sigma, Tair = Tair(n), ea = ea(n), emissivity = emissivity, Jlw = Jlw(n)) -
+        backscattering(emissivity = emissivity, sigma = sigma, Twater = un[0], eps = eps))
+      meteo_pgdl[2, idn] = latent(Tair = Tair(n), Twater = un[0], Uw = Uw(n), p2 = p2, pa = Pa(n), ea=ea(n), RH = RH(n))
+      meteo_pgdl[3, idn] = sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[0], Uw = Uw(n))
+      meteo_pgdl[4, idn] = Jsw(n)
+      meteo_pgdl[5, idn] = kd(n)
+      meteo_pgdl[6, idn] = shear
+      meteo_pgdl[7, idn] = tau
+      meteo_pgdl[8, idn] = np.nanmax(area)
+
+  end_time = datetime.datetime.now()
+  print((end_time - start_time))
+  
+  # TODO: implment buoyancy calcs from rLakeAnalyzer
+  
+  dat = {'temp' : um,
+          'diff' : kzm,
+          'mixing' : mix,
+          'buoyancy' : n2m,
+          'icethickness' : Hi,
+          'iceflag' : ice,
+          'icemovAvg' : iceT,
+          'supercooled' : supercooled,
+          'mixingdepth' : mix_z,
+          'thermoclinedepth' : therm_z,
+          'endtime' : endTime}
+  if pgdl_mode == 'on':
+    dat = {'temp' : um,
+               'diff' : kzm,
+               'mixing' : mix,
+               'buoyancy' : n2m,
+               'icethickness' : Hi,
+               'iceflag' : ice,
+               'icemovAvg' : iceT,
+               'supercooled' : supercooled,
+               'mixingdepth' : mix_z,
+               'thermoclinedepth' : therm_z,
+               'endtime' : endTime,
+               # 'average' : df.avg.sim,
+               'temp_diff' : um_diff,
+               'temp_mix' : um_mix,
+               'temp_conv' : um_conv,
+               'temp_ice' : um_ice,
+               'meteo_input' : meteo_pgdl,
+               'buoyancy_pgdl' : n2_pgdl}
+  
+  return(dat)
+  
+  
+  
+  
+hold = run_thermalmodel(u_ini, startTime, endTime,
+  area,
+  volume,
+  zmax,
+  nx,
+  dt,
+  dx,
+  daily_meteo,
+  secview,
+  ice=False,
+  Hi=0,
+  iceT=6,
+  supercooled=0,
+  scheme='explicit',
+  kd_light=None,
+  Cd=0.0008, # momentum coeff (wind)
+  pgdl_mode='on')
