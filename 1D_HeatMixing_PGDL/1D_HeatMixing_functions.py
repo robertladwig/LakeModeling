@@ -70,7 +70,7 @@ def provide_meteorology(meteofile, secchifile, windfactor):
   
 def initial_profile(initfile, nx, dx, depth, processed_meteo):
   meteo = processed_meteo
-  startDate = meteo['sampledate'].min()
+  startDate = meteo['date'].min()
   obs = pd.read_csv(initfile)
   obs['datetime'] = pd.to_datetime(obs['datetime'])
   obs['ditt'] = abs(obs['datetime'] - startDate)
@@ -189,6 +189,7 @@ def run_thermalmodel(u, startTime, endTime,
   um = np.full([nx, nCol], np.nan)
   kzm = np.full([nx, nCol], np.nan)
   n2m = np.full([nx, nCol], np.nan)
+  mix = np.full([1,nCol], np.nan)
   therm_z = np.full([1,nCol], np.nan)
   mix_z = np.full([1,nCol], np.nan)
   Him = np.full([1,nCol], np.nan)
@@ -258,13 +259,12 @@ def run_thermalmodel(u, startTime, endTime,
         Hg[0]) * dt/area[0])
       # all layers in between
       for i in range(1,(nx-1)):
-        print(i)
         u[i] = (un[i] + (area[i] * kzn[i] * 1 / dx**2 * (un[i+1] - 2 * un[i] + un[i-1]) +
           abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ) + Hg[i])* dt/area[i])
       # bottom layer
       u[(nx-1)] = (un[(nx-1)] +
-        abs(H[(nx-1)]-H[(nx-1)-1]) * area[(nx-1)]/(area[(nx-1)]*dx) * 1/(4181 * calc_dens(un[(nx-1)]) +
-        Hg[(nx-1)]/area[(nx-1)]) * dt)
+      abs(H[(nx-1)]-H[(nx-1)-1]) * area[(nx-1)]/(area[(nx-1)]*dx) * 1/(4181 * calc_dens(un[(nx-1)]) +
+      Hg[(nx-1)]/area[(nx-1)]) * dt)
                                                            
      if pgdl_mode == 'on':
       um_diff[:, idn] = u
@@ -286,3 +286,110 @@ def run_thermalmodel(u, startTime, endTime,
     
     if ice:
       KE = KE * KEice
+    
+    maxdep = 0
+    for dep in range(nx-1):
+      if dep == 0:
+        PE = (abs(g *   depth[dep] *( depth[dep+1] - Zcv)  *
+             # abs(calc_dens(u[dep+1])- calc_dens(u[dep])))
+             abs(calc_dens(u[dep+1])- np.mean(calc_dens(u[0])))))
+      else:
+        PEprior = deepcopy(PE)
+        PE = (abs(g *   depth[dep] *( depth[dep+1] - Zcv)  *
+            # abs(calc_dens(u[dep+1])- calc_dens(u[dep]))) + PEprior
+            abs(calc_dens(u[dep+1])- np.mean(calc_dens(u[0:(dep+1)])))) + PEprior)
+            
+      if PE > KE:
+        maxdep = dep - 1
+        break
+      elif dep > 0 and PE < KE:
+        u[(dep - 1):(dep+1)] = np.sum(u[(dep-1):(dep+1)] * volume[(dep-1):(dep+1)])/np.sum(volume[(dep-1):(dep+1)])
+      
+      maxdep = dep
+      
+    mix[0,idn] = KE/PE #append(mix, KE/PE)
+    therm_z[0,idn] = depth[maxdep] #append(therm.z, maxdep)
+    if pgdl_mode == 'on':
+      um_mix[:, idn] = u
+      
+     ## (4) DENSITY INSTABILITIES
+    # convective overturn: Convective mixing is induced by an unstable density 
+    # profile. All groups of water layers where the vertical density profile is 
+    # unstable are mixed with the first stable layer below the unstable layer(s) 
+    # (i.e., a layer volume weighed means of temperature and other variables are 
+    # calculated for the mixed water column). This procedure is continued until 
+    # the vertical density profile in the whole water column becomes neutral or stable.
+    dens_u = calc_dens(u) 
+    diff_dens_u = np.diff(dens_u) 
+    diff_dens_u[abs(diff_dens_u) <= densThresh] = 0
+    while np.any(diff_dens_u < 0)
+      dens_u = calc_dens(u)
+      for dep in range(nx-1):
+        if dens_u[dep+1] < dens_u[dep] and abs(dens_u[dep+1] - dens_u[dep]) >= densThresh:
+          u[(dep):(dep+2)] = np.sum(u[(dep):(dep+2)] * volume[(dep):(dep+2)])/np.sum(volume[(dep):(dep+2)])
+          break
+        
+      dens_u = calc_dens(u)
+      diff_dens_u = np.diff(dens_u)
+      diff_dens_u[abs(diff_dens_u) <= densThresh] = 0
+      
+    dens_u_n2 = calc_dens(u)
+    n2 = 9.81/np.mean(dens_u_n2) * (dens_u_n2[1:] - dens_u_n2[:-1])/dx
+    if np.max(n2) > 1e-4:
+      max_n2 = depth[np.argmax(n2)]
+    else:
+      max_n2 = np.max(depth)
+    mix_z[0, idx] = max_n2
+    if pgdl_mode == 'on':
+      um_conv[:, idx] = u
+      
+      
+    ## (5) ICE FORMATION
+    # according to Hostetler & Bartlein (1990): 
+    # (1) ice forms when surface water temp <= 1 deg C and melts when > 1 deg
+    # (2) rate of ice formation/melting is exponential function of ice thickness
+    # (the thicker the ice, the slower the formation rate, and vice versa)
+    # (3) heat of fusion is added/subtracted from surface energy balance
+    # (4) diffusion below ice only happens on molecular level
+    # (5) with ice, surface absorption of incoming solar radiation increases to 85 %
+    icep  = max(dt_iceon_avg,  (dt/86400))
+    x = (dt/86400) / icep
+    iceT = iceT * (1 - x) + u[0] * x
+    if (iceT <= 0) and Hi < Ice_min:
+      # if (any(u <= 0) == TRUE){
+      supercooled = u < 0
+      initEnergy = np.sum((0-u[supercooled])*area[supercooled] * dx * 4.18E6)
+      
+      if ice == False:
+        Hi = Ice_min+(initEnergy/(910*333500))/np.max(area)
+      else:
+        if (Tair(n) > 0):
+          Tice = 0
+          Hi = Hi - max([0, meltP * dt*((absorp*Jsw(n))+(longwave(cc = CC(n), sigma = sigma, Tair = Tair(n), ea = ea(n), emissivity = emissivity, Jlw = Jlw(n)) +
+                                                           backscattering(emissivity = emissivity, sigma = sigma, Twater = un[0], eps = eps) +
+                                                           latent(Tair = Tair(n), Twater = un[0], Uw = Uw(n ), p2 = p2, pa = Pa(n), ea=ea(n),  RH = RH(n)) + 
+                                                           sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[0], Uw = Uw(n))) )/(1000*333500)])
+        else:
+          Tice =  ((1/(10 * Hi)) * 0 +  Tair(n)) / (1 + (1/(10 * Hi))) 
+          Hi = min(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
+      ice = True
+      if (Hi > 0):
+        u[supercooled] = 0
+        u[0] = 0
+      Him[0, idn] = Hi
+    elif (ice == True and Hi >= Ice_min):
+      if (Tair(n) > 0):
+        Tice = 0
+        Hi = Hi -max([0, meltP * dt*((absorp*Jsw(n))+(backscattering(emissivity = emissivity, sigma = sigma, Twater = un[0], eps = eps) +
+                                                         latent(Tair = Tair(n), Twater = un[0], Uw = Uw(n ), p2 = p2, pa = Pa(n), ea=ea(n*dt),  RH = RH(n)) + 
+                                                         sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[0], Uw = Uw(n))) )/(1000*333500)]) 
+      else:
+        Tice =  ((1/(10 * Hi)) * 0 +  Tair(n*dt)) / (1 + (1/(10 * Hi))) 
+        Hi = min(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
+      
+      u[supercooled] = 0
+      u[0] = 0
+      Him[0, idn] = Hi
+    elif ice == True and Hi < Ice_min:
+      ice = False
+    
