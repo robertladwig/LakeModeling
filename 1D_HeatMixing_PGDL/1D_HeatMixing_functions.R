@@ -34,12 +34,13 @@ provide_meteorology <- function(meteofile, secchifile,
   
   daily_meteo <- meteo
   daily_meteo$date = daily_meteo$datetime
-  daily_meteo$Cloud_Cover <- gotmtools::calc_cc(date = as.POSIXct(daily_meteo$date),
-                                                airt = daily_meteo$Air_Temperature_celsius,
-                                                relh = daily_meteo$Relative_Humidity_percent,
-                                                swr = daily_meteo$Shortwave_Radiation_Downwelling_wattPerMeterSquared,
-                                                lat = 43, lon = -89.41,
-                                                elev = 258)
+  # daily_meteo$Cloud_Cover <- gotmtools::calc_cc(date = as.POSIXct(daily_meteo$date),
+  #                                               airt = daily_meteo$Air_Temperature_celsius,
+  #                                               relh = daily_meteo$Relative_Humidity_percent,
+  #                                               swr = daily_meteo$Shortwave_Radiation_Downwelling_wattPerMeterSquared,
+  #                                               lat = 43, lon = -89.41,
+  #                                               elev = 258)
+  daily_meteo$Cloud_Cover = 0
   daily_meteo$dt <- as.POSIXct(daily_meteo$date) - (as.POSIXct(daily_meteo$date)[1]) + 1
   daily_meteo$ea <- (daily_meteo$Relative_Humidity_percent * (4.596 * exp((17.27*(daily_meteo$Air_Temperature_celsius))/
                                                                             (237.3 + (daily_meteo$Air_Temperature_celsius) )))/100)
@@ -379,7 +380,7 @@ run_thermalmodel <- function(u, startTime, endTime,
     }
     
     dens_u_n2 = calc_dens(u) 
-    n2 <- 9.81/mean(calc_dens(u)) * (lead(dens_u_n2) - lag(dens_u_n2))/dx
+    n2 <- 9.81/mean(calc_dens(u)) * (lead(dens_u_n2) - dens_u_n2)/dx
     max.n2 <- ifelse(max(n2, na.rm = T) > 1E-4, which.max(n2) * dx, dx * nx)
     mix.z[match(n, seq(startTime, endTime, dt))] <- max.n2
     if (pgdl_mode == 'on'){

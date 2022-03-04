@@ -71,7 +71,7 @@ for (i in 1:total_runtime){
     iceT = res$icemovAvg
     supercooled = res$supercooled
     kd_light = NULL
-    matrix_range = max(1, (startTime/dt)):((endTime/dt))
+    matrix_range = max(1, (startTime/dt)):((endTime/dt)) # this returns floats, not ints, after first round through?
   } else {
     u = u_ini
     startTime = 1

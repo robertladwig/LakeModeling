@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import os
 from math import pi, exp, sqrt
 from scipy.interpolate import interp1d
 from copy import deepcopy
@@ -14,7 +15,7 @@ def calc_dens(wtemp):
 
 ## this is our attempt for turbulence closure, estimating eddy diffusivity
 def eddy_diffusivity(rho, depth, g, rho_0, ice, area):
-    buoy = np.ones(nx) * 7e-5
+    buoy = np.ones(len(depth)) * 7e-5
     buoy[:-1] = np.abs(rho[1:] - rho[:-1]) / (depth[1:] - depth[:-1]) * g / rho_0
     buoy[-1] = buoy[-2]
         
@@ -131,9 +132,13 @@ def latent(Tair, Twater, Uw, p2, pa, ea, RH): # evaporation / latent heat
   latent = -1* fu * p2 * (ew - ea)# * 1.33) // * 1/6
   return(latent)
 
-def run_thermalmodel(u, startTime, endTime,
+def run_thermalmodel(
+  u, 
+  startTime, 
+  endTime,
   area,
   volume,
+  depth,
   zmax,
   nx,
   dt,
@@ -162,6 +167,8 @@ def run_thermalmodel(u, startTime, endTime,
   KEice=1/1000,
   Ice_min=0.1,
   pgdl_mode='off'):
+    
+
   
   ## linearization of driver data, so model can have dynamic step
   Jsw_fillvals = tuple(daily_meteo.Shortwave_Radiation_Downwelling_wattPerMeterSquared.values[[0, -1]])
@@ -182,7 +189,7 @@ def run_thermalmodel(u, startTime, endTime,
   kd = interp1d(secview.dt.values, secview.kd.values, kind = "linear", fill_value=kd_fillvals, bounds_error=False)
   RH_fillvals = tuple(daily_meteo.Relative_Humidity_percent.values[[0,-1]])
   RH = interp1d(daily_meteo.dt.values, daily_meteo.Relative_Humidity_percent.values, kind = "linear", fill_value=RH_fillvals, bounds_error=False)
-  
+
   step_times = np.arange(startTime, endTime, dt)
   nCol = len(step_times)
   um = np.full([nx, nCol], np.nan)
@@ -206,20 +213,18 @@ def run_thermalmodel(u, startTime, endTime,
       return kd_light
 
   start_time = datetime.datetime.now()
-  
+
   times = np.arange(startTime, endTime, dt)
   for idn, n in enumerate(times):
     un = deepcopy(u)
     dens_u_n2 = calc_dens(u)
     time_ind = np.where(times == n)
-    # print(idn)
-    # print(n)
+    
     if pgdl_mode == 'on':
       n2 = 9.81/np.mean(dens_u_n2) * (dens_u_n2[1:] - dens_u_n2[:-1])/dx
       n2_pgdl[:,idn] = np.concatenate([n2, np.array([np.nan])])
-    
     kz = eddy_diffusivity(dens_u_n2, depth, 9.81, 998.2, ice, area) / 86400
-    
+
     if ice and Tair(n) <= 0:
       kzn = kz
       absorp = 1 - 0.7
@@ -232,7 +237,6 @@ def run_thermalmodel(u, startTime, endTime,
       kzn = kz
       absorp = 1 - reflect
       infra = 1 - absorp
-    
     kzm[:,idn] = kzn
     
     ## (1) Heat addition
@@ -266,7 +270,6 @@ def run_thermalmodel(u, startTime, endTime,
                                                            
     if pgdl_mode == 'on':
       um_diff[:, idn] = u
-      
     ## (3) TURBULENT MIXING OF MIXED LAYER
     # the mixed layer depth is determined for each time step by comparing kinetic 
     # energy available from wind and the potential energy required to completely 
@@ -286,7 +289,7 @@ def run_thermalmodel(u, startTime, endTime,
       KE = KE * KEice
     
     maxdep = 0
-    for dep in range(nx-1):
+    for dep in range(0, nx-1):
       if dep == 0:
         PE = (abs(g *   depth[dep] *( depth[dep+1] - Zcv)  *
              # abs(calc_dens(u[dep+1])- calc_dens(u[dep])))
@@ -309,8 +312,8 @@ def run_thermalmodel(u, startTime, endTime,
     therm_z[0,idn] = depth[maxdep] #append(therm.z, maxdep)
     if pgdl_mode == 'on':
       um_mix[:, idn] = u
-      
-     ## (4) DENSITY INSTABILITIES
+
+    ## (4) DENSITY INSTABILITIES
     # convective overturn: Convective mixing is induced by an unstable density 
     # profile. All groups of water layers where the vertical density profile is 
     # unstable are mixed with the first stable layer below the unstable layer(s) 
@@ -319,17 +322,17 @@ def run_thermalmodel(u, startTime, endTime,
     # the vertical density profile in the whole water column becomes neutral or stable.
     dens_u = calc_dens(u) 
     diff_dens_u = np.diff(dens_u) 
-    diff_dens_u[abs(diff_dens_u) <= densThresh] = 0
+    diff_dens_u[abs(diff_dens_u) <= denThresh] = 0
     while np.any(diff_dens_u < 0):
       dens_u = calc_dens(u)
-      for dep in range(nx-1):
-        if dens_u[dep+1] < dens_u[dep] and abs(dens_u[dep+1] - dens_u[dep]) >= densThresh:
+      for dep in range(0, nx-1):
+        if dens_u[dep+1] < dens_u[dep] and abs(dens_u[dep+1] - dens_u[dep]) >= denThresh:
           u[(dep):(dep+2)] = np.sum(u[(dep):(dep+2)] * volume[(dep):(dep+2)])/np.sum(volume[(dep):(dep+2)])
           break
         
       dens_u = calc_dens(u)
       diff_dens_u = np.diff(dens_u)
-      diff_dens_u[abs(diff_dens_u) <= densThresh] = 0
+      diff_dens_u[abs(diff_dens_u) <= denThresh] = 0
       
     dens_u_n2 = calc_dens(u)
     n2 = 9.81/np.mean(dens_u_n2) * (dens_u_n2[1:] - dens_u_n2[:-1])/dx
@@ -444,24 +447,4 @@ def run_thermalmodel(u, startTime, endTime,
                'buoyancy_pgdl' : n2_pgdl}
   
   return(dat)
-  
-  
-  
-  
-hold = run_thermalmodel(u_ini, startTime, endTime,
-  area,
-  volume,
-  zmax,
-  nx,
-  dt,
-  dx,
-  daily_meteo,
-  secview,
-  ice=False,
-  Hi=0,
-  iceT=6,
-  supercooled=0,
-  scheme='explicit',
-  kd_light=None,
-  Cd=0.0008, # momentum coeff (wind)
-  pgdl_mode='on')
+
