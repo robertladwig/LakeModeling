@@ -43,7 +43,7 @@ startingDate <- meteo_all[[1]]$datetime[1]
 
 temp <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
               nrow = nx)
-nind = 1000
+nind = 1e4
 individuals <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                nrow = nind)
 avgtemp <- matrix(NA, ncol = 6,
@@ -149,7 +149,7 @@ ggplot(m.df, aes((time), as.numeric(variable))) +
   scale_y_reverse() 
 
 df.ind <- data.frame(cbind(time, t(individuals)) )
-colnames(df.ind) <- c("time", as.character(paste0(seq(from = 1,  by =0.2, length.out = nind))))
+colnames(df.ind) <- c("time", as.character(paste0(seq(from = 1,  by =0.003, length.out = nind))))
 m.df.ind <- reshape2::melt(df.ind, "time")
 
 library(gganimate)
@@ -160,7 +160,7 @@ g1<-ggplot(m.df) +
   scale_y_reverse() 
 
 ## vertical temperature profiles
-for (i in seq(1,ncol(temp), length.out = 200)){
+for (i in seq(1,ncol(temp), length.out = 300)){
   n = i
   i = floor(i)
   
@@ -172,10 +172,11 @@ for (i in seq(1,ncol(temp), length.out = 200)){
     mutate(depth =  as.numeric(as.character(variable)))
 
   g1<- ggplot() +
-    geom_path(data = sim, aes(value, 
-                              depth), size = 1.2) +
+    
     # facet_wrap(~ factor(variable, level = c(paste0('wtemp.',seq(0,24,1)))), scales = 'free') +
     geom_point(data = inds, aes(depth, value, col = variable), size = 3) +
+    geom_path(data = sim, aes(value, 
+                              depth), size = 1.2) +
     xlab('temp. (deg C)') + ylab('depth (m)')+
     scale_y_reverse() +
     ggtitle( time[i]) + 
@@ -193,7 +194,7 @@ for (i in seq(1,ncol(temp), length.out = 200)){
   
   g=g1 + g2 + plot_layout(widths = c(4, 1)); g
   
-  ggsave(paste0('../../animation_ibm/pic_',match(n, seq(1,ncol(temp),length.out=200)),'.png'),
+  ggsave(paste0('../../animation_ibm/pic_',match(n, seq(1,ncol(temp),length.out=300)),'.png'),
          width = 4, height = 5, units = 'in')
   
 }
