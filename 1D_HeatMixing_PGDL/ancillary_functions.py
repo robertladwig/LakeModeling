@@ -3,7 +3,15 @@ import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 from scipy.interpolate import interp1d
-from math import pi, cos, sin
+from math import pi, cos, sin, isinf
+
+## function to calculate density from temperature
+def calc_dens(wtemp):
+    dens = (999.842594 + (6.793952 * 1e-2 * wtemp) - (9.095290 * 1e-3 *wtemp**2) +
+      (1.001685 * 1e-4 * wtemp**3) - (1.120083 * 1e-6* wtemp**4) + 
+      (6.536336 * 1e-9 * wtemp**5))
+    return dens
+
 ## python implementation of gotmtools::calc_cc
 def calc_cc(date, airt,  swr, lat, lon, elev,  relh = None, dewt = None,daily = False): 
     if daily == True:
@@ -84,3 +92,23 @@ def calc_cc(date, airt,  swr, lat, lon, elev,  relh = None, dewt = None,daily = 
     ccsim = ccsim_fun(df.dt.values)
     
     return(ccsim)
+
+def buoyancy_freq(wtr, depths):
+    rhoVar = calc_dens(wtr)
+    numDepths = len(depths)
+    n2 = 9.81 / rhoVar[:-1] * (rhoVar[1:] - rhoVar[:-1]) / (depths[1:] - depths[:-1])
+    n2depths = (depths[1:] + depths[:-1]) / 2 # not returning this; should be okay if grid is regularly spaced
+    return(n2)
+
+def center_buoyancy(wtr, depths):
+    N2 = buoyancy_freq(wtr, depths)
+    dz = depths[1:] - depths[:-1]
+    areas = dz * N2
+    cent_depths = (depths[1:] + depths[:-1]) / 2 
+    
+    areas[areas < 0] = 0
+    cent_buoyancy = np.sum(cent_depths * areas)/np.sum(areas)
+    if isinf(cent_buoyancy):
+        return(np.nan)
+    else:
+        return(cent_buoyancy)

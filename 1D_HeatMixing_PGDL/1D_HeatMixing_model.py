@@ -113,7 +113,7 @@ for i in range(total_runtime):
  
   temp[:, matrix_range_start:(matrix_range_end)] =  res['temp']
   diff[:, matrix_range_start:matrix_range_end] =  res['diff']
-  # avgtemp[matrix_range,] <- as.matrix(res$average)
+  avgtemp[matrix_range_start:matrix_range_end,:] = res['average'].values
   temp_diff[:, matrix_range_start:matrix_range_end] =  res['temp_diff']
   temp_mix[:, matrix_range_start:matrix_range_end] =  res['temp_mix']
   temp_conv[:, matrix_range_start:matrix_range_end] =  res['temp_conv']
@@ -122,6 +122,27 @@ for i in range(total_runtime):
   meteo[:, matrix_range_start:matrix_range_end] =  res['meteo_input']
   buoyancy[:, matrix_range_start:matrix_range_end] = res['buoyancy_pgdl']
   
-plt.subplots(figsize=(40,40))
-sns.heatmap(temp, cmap=plt.cm.get_cmap('Spectral_r'))
+# convert averages from array to data frame
+avgtemp_df = pd.DataFrame(avgtemp, columns=["time", "thermoclineDep", "epi", "hypo", "tot", "stratFlag"])
+
+# epi/hypo/total
+colors = ['#F8766D', '#00BA38', '#619CFF']
+avgtemp_df.plot(x='time', y=['epi', 'hypo', 'tot'], color=colors, kind='line')
 plt.show()
+
+# stratflag
+avgtemp_df.plot(x='time', y=['stratFlag'], kind='line', color="black")
+plt.show()
+
+# thermocline depth
+avgtemp_df.plot(x='time', y=['thermoclineDep'], color="black")
+plt.gca().invert_yaxis()
+plt.scatter(avgtemp_df.time, avgtemp_df.stratFlag, c=avgtemp_df.stratFlag)
+plt.show()
+
+# heatmap of temps  
+plt.subplots(figsize=(40,40))
+sns.heatmap(temp, cmap=plt.cm.get_cmap('Spectral_r'), xticklabels=1000, yticklabels=2)
+plt.show()
+
+

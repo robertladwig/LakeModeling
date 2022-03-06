@@ -5,7 +5,7 @@ from math import pi, exp, sqrt
 from scipy.interpolate import interp1d
 from copy import deepcopy
 import datetime
-from ancillary_functions import calc_cc
+from ancillary_functions import calc_cc, buoyancy_freq, center_buoyancy
 
 ## function to calculate density from temperature
 def calc_dens(wtemp):
@@ -419,6 +419,30 @@ def run_thermalmodel(
   print((end_time - start_time))
   
   # TODO: implment buoyancy calcs from rLakeAnalyzer
+  bf_sim = np.apply_along_axis(center_buoyancy, axis=1, arr = um.T, depths=depth)
+  
+
+  df_z_df_sim = pd.DataFrame({'time': times, 'thermoclineDep': bf_sim})
+
+  df_z_df_sim['epi'] = np.nan
+  df_z_df_sim['hypo'] = np.nan
+  df_z_df_sim['tot'] = np.nan
+  df_z_df_sim['stratFlag'] = np.nan
+  for j in range(df_z_df_sim.shape[0]):
+    if np.isnan(df_z_df_sim.loc[j, 'thermoclineDep']):
+      cur_z = 1
+      cur_ind = 0
+    else:
+      cur_z = df_z_df_sim.loc[j, 'thermoclineDep']
+      cur_ind = np.max(np.where(depth < cur_z))
+      
+    df_z_df_sim.loc[j, 'epi'] = np.sum(um[0:(cur_ind + 1), j] * area[0:(cur_ind+1)]) / np.sum(area[0:(cur_ind+1)])
+    df_z_df_sim.loc[j, 'hypo'] = np.sum(um[ cur_ind:, j] * area[cur_ind:]) / np.sum(area[cur_ind:])
+    df_z_df_sim.loc[j, 'tot'] = np.sum(um[:,j] * area) / np.sum(area)
+    if calc_dens(um[-1,j]) - calc_dens(um[0,j]) >= 0.1 and np.mean(um[:,j]) >= 4:
+      df_z_df_sim.loc[j, 'stratFlag'] = 1
+    else:
+      df_z_df_sim.loc[j, 'stratFlag'] = 0
   
   dat = {'temp' : um,
           'diff' : kzm,
@@ -430,7 +454,8 @@ def run_thermalmodel(
           'supercooled' : supercooled,
           'mixingdepth' : mix_z,
           'thermoclinedepth' : therm_z,
-          'endtime' : endTime}
+          'endtime' : endTime, 
+          'average' : df_z_df_sim}
   if pgdl_mode == 'on':
     dat = {'temp' : um,
                'diff' : kzm,
@@ -442,8 +467,8 @@ def run_thermalmodel(
                'supercooled' : supercooled,
                'mixingdepth' : mix_z,
                'thermoclinedepth' : therm_z,
-               'endtime' : endTime,
-               # 'average' : df.avg.sim,
+               'endtime' : endTime, 
+               'average' : df_z_df_sim,
                'temp_diff' : um_diff,
                'temp_mix' : um_mix,
                'temp_conv' : um_conv,
