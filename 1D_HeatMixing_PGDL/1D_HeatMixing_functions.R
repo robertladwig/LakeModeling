@@ -34,13 +34,12 @@ provide_meteorology <- function(meteofile, secchifile,
   
   daily_meteo <- meteo
   daily_meteo$date = daily_meteo$datetime
-  # daily_meteo$Cloud_Cover <- gotmtools::calc_cc(date = as.POSIXct(daily_meteo$date),
-  #                                               airt = daily_meteo$Air_Temperature_celsius,
-  #                                               relh = daily_meteo$Relative_Humidity_percent,
-  #                                               swr = daily_meteo$Shortwave_Radiation_Downwelling_wattPerMeterSquared,
-  #                                               lat = 43, lon = -89.41,
-  #                                               elev = 258)
-  daily_meteo$Cloud_Cover = 0
+  daily_meteo$Cloud_Cover <- gotmtools::calc_cc(date = as.POSIXct(daily_meteo$date),
+                                                airt = daily_meteo$Air_Temperature_celsius,
+                                                relh = daily_meteo$Relative_Humidity_percent,
+                                                swr = daily_meteo$Shortwave_Radiation_Downwelling_wattPerMeterSquared,
+                                                lat = 43, long = -89.41,
+                                                elev = 258)
   daily_meteo$dt <- as.POSIXct(daily_meteo$date) - (as.POSIXct(daily_meteo$date)[1]) + 1
   daily_meteo$ea <- (daily_meteo$Relative_Humidity_percent * (4.596 * exp((17.27*(daily_meteo$Air_Temperature_celsius))/
                                                                             (237.3 + (daily_meteo$Air_Temperature_celsius) )))/100)

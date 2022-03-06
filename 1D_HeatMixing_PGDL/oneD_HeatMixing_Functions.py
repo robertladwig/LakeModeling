@@ -5,6 +5,7 @@ from math import pi, exp, sqrt
 from scipy.interpolate import interp1d
 from copy import deepcopy
 import datetime
+from ancillary_functions import calc_cc
 
 ## function to calculate density from temperature
 def calc_dens(wtemp):
@@ -34,8 +35,12 @@ def provide_meteorology(meteofile, secchifile, windfactor):
     meteo = pd.read_csv(meteofile)
     daily_meteo = meteo
     daily_meteo['date'] = pd.to_datetime(daily_meteo['datetime'])
-    # TODO !!!!!!!!!!!!!!!!!! Implement actual cloud cover function
-    daily_meteo['Cloud_Cover'] = 0
+    daily_meteo['Cloud_Cover'] = calc_cc(date = daily_meteo['date'],
+                                                airt = daily_meteo['Air_Temperature_celsius'],
+                                                relh = daily_meteo['Relative_Humidity_percent'],
+                                                swr = daily_meteo['Shortwave_Radiation_Downwelling_wattPerMeterSquared'],
+                                                lat = 43, lon = -89.41,
+                                                elev = 258)
     daily_meteo['dt'] = (daily_meteo['date'] - daily_meteo['date'][0]).astype('timedelta64[s]') + 1
     daily_meteo['ea'] = (daily_meteo['Relative_Humidity_percent'] * 
       (4.596 * np.exp((17.27*(daily_meteo['Air_Temperature_celsius'])) /
