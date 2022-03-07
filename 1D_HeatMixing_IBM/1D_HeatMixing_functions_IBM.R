@@ -279,7 +279,7 @@ run_thermalmodel <- function(u, startTime, endTime,
            abs(H[1+1]-H[1]) * area[1]/(dx) * 1/(4184 * calc_dens(un[1]) ) +
            Hg[1]) * dt/area[1]
       tracer[1] = tracern[1] +
-        (area[1] * (kzn[1+1]-kzn[1])/dx * 1 / dx * (tracern[1+1] -  tracern[1])) *dt/area[1]
+        (area[1] * abs((kzn[1+1]-kzn[1])/dx) * 1 / dx * (tracern[1+1] -  tracern[1])) *dt/area[1]
       
       # all other layers in between
       for (i in 2:(nx-1)){

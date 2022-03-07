@@ -163,6 +163,14 @@ colnames(df.tracer) <- c("time", as.character(paste0(seq(1,nrow(tracers)))))
 m.df.tracer <- reshape2::melt(df.tracer, "time")
 
 plot(colSums(tracers))
+plot(colSums(tracers),xlim=c(2343,2400),ylim=c(80,86))
+diff[,2342]
+diff[,2343]
+plot(colSums(tracers), ylim=c(95,100),xlim=c(1930,1950))
+losses <- c(rep(0, nrow(tracers)))
+for (j in 1:nrow(tracers)){
+  losses[j]=sum(tracers[j,tracers[j,]<=0],na.rm = T)
+}
 
 ggplot(m.df.tracer, aes((time), as.numeric(variable))) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
