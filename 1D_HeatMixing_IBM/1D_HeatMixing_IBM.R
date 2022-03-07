@@ -43,9 +43,13 @@ startingDate <- meteo_all[[1]]$datetime[1]
 
 temp <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
               nrow = nx)
+diff <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+               nrow = nx)
 nind = 1e4
 individuals <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                nrow = nind)
+tracers <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+                      nrow = nx)
 avgtemp <- matrix(NA, ncol = 6,
                 nrow = total_runtime * hydrodynamic_timestep/ dt)
 if (exists('res')) {remove('res')}
@@ -62,6 +66,7 @@ for (i in 1:total_runtime){
     kd_light = NULL
     matrix_range = max(1, (startTime/dt)):((endTime/dt))
     agents = res$agents[, ncol(res$agents)]
+    tracer = res$tracer[, ncol(res$tracer)]
   } else {
     u = u_ini
     startTime = 1
@@ -73,6 +78,8 @@ for (i in 1:total_runtime){
     kd_light = NULL
     matrix_range = max(1, (startTime/dt)):((endTime/dt)+1)
     agents = c(rep(10,nind))
+    tracer = u_ini * 1e-6
+    tracer[10] = 100
   }
   res <-  run_thermalmodel(u = u, 
                             startTime = startTime, 
@@ -92,10 +99,13 @@ for (i in 1:total_runtime){
                             daily_meteo = meteo_all[[1]],
                             secview = meteo_all[[2]],
                             Cd = 0.0008,
-                            agents = agents)
+                            agents = agents,
+                           tracer = tracer)
 
   temp[, matrix_range] =  res$temp
+  diff[, matrix_range] =  res$diff
   individuals[, matrix_range] =  res$agents
+  tracers[, matrix_range] =  res$tracer
   avgtemp[matrix_range,] <- as.matrix(res$average)
   
   average <- res$average %>%
@@ -148,10 +158,28 @@ ggplot(m.df, aes((time), as.numeric(variable))) +
   labs(fill = 'Temp [degC]')+
   scale_y_reverse() 
 
+df.tracer <- data.frame(cbind(time, t(tracers)) )
+colnames(df.tracer) <- c("time", as.character(paste0(seq(1,nrow(tracers)))))
+m.df.tracer <- reshape2::melt(df.tracer, "time")
+
+plot(colSums(tracers))
+
+ggplot(m.df.tracer, aes((time), as.numeric(variable))) +
+  geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
+  scale_fill_gradientn(limits = c(0,100),
+                       colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
+  theme_minimal()  +xlab('Time') +
+  ylab('Depth') +
+  labs(fill = 'Tracer [-]')+
+  scale_y_reverse() 
+
 df.ind <- data.frame(cbind(time, t(individuals)) )
-colnames(df.ind) <- c("time", as.character(paste0(seq(from = 1,  by =0.003, length.out = nind))))
+colnames(df.ind) <- c("time", as.character(paste0(seq(from = 1e-7,  by =1e-8, length.out = nind))))
 m.df.ind <- reshape2::melt(df.ind, "time")
 
+df.diff <- data.frame(cbind(time, t(diff)) )
+colnames(df.diff) <- c("time", as.character(paste0(seq(1,nrow(diff)))))
+m.df.diff <- reshape2::melt(df.diff, "time")
 library(gganimate)
 g1<-ggplot(m.df) +
   geom_path(aes(value, as.numeric(as.character(variable)))) +
@@ -160,11 +188,11 @@ g1<-ggplot(m.df) +
   scale_y_reverse() 
 
 ## vertical temperature profiles
-for (i in seq(1,ncol(temp), length.out = 300)){
+for (i in seq(1,ncol(temp), length.out = 200)){
   n = i
   i = floor(i)
   
-  sim = m.df %>% 
+  sim = m.df.diff %>% 
     filter(time == time[i]) %>%
     mutate(depth =  as.numeric(as.character(variable)))
   inds = m.df.ind %>% 
@@ -177,11 +205,11 @@ for (i in seq(1,ncol(temp), length.out = 300)){
     geom_point(data = inds, aes(depth, value, col = variable), size = 3) +
     geom_path(data = sim, aes(value, 
                               depth), size = 1.2) +
-    xlab('temp. (deg C)') + ylab('depth (m)')+
+    xlab('Kz (m2 s-1)') + ylab('depth (m)')+
     scale_y_reverse() +
     ggtitle( time[i]) + 
     labs(col='') +
-    xlim(-5, 35) + 
+    xlim(1e-7, 1e-4) +
     theme_light() +
     theme(legend.position = "none") 
   
@@ -194,7 +222,7 @@ for (i in seq(1,ncol(temp), length.out = 300)){
   
   g=g1 + g2 + plot_layout(widths = c(4, 1)); g
   
-  ggsave(paste0('../../animation_ibm/pic_',match(n, seq(1,ncol(temp),length.out=300)),'.png'),
+  ggsave(paste0('../../animation_ibm/pic_',match(n, seq(1,ncol(temp),length.out=200)),'.png'),
          width = 4, height = 5, units = 'in')
   
 }

@@ -172,7 +172,8 @@ run_thermalmodel <- function(u, startTime, endTime,
                              dx,
                              daily_meteo,
                              secview,
-                             agents){ # spatial step){
+                             agents,
+                             tracer){ # spatial step){
   
   ## linearization of driver data, so model can have dynamic step
   Jsw <- approxfun(x = daily_meteo$dt, y = daily_meteo$Shortwave_Radiation_Downwelling_wattPerMeterSquared, method = "linear", rule = 2)
@@ -193,6 +194,7 @@ run_thermalmodel <- function(u, startTime, endTime,
   mix.z <- rep(NA, length = length( seq(startTime, endTime, dt)/dt))
   Him <- rep(NA, length = length( seq(startTime, endTime, dt)/dt))
   magents <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt), nrow = length(agents))
+  tracerm <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt), nrow = nx)
   
   if (!is.null(kd_light)){
     kd <- approxfun(x = seq(startTime, endTime, 1), y = rep(kd_light, length(seq(startTime, endTime, 1))), method = "linear", rule = 2)
@@ -204,6 +206,7 @@ run_thermalmodel <- function(u, startTime, endTime,
     
     un = u # prior temperature values
     kz = eddy_diffusivity(calc_dens(un), depth, 9.81, 998.2, ice, area) / 86400
+    tracern = tracer
     
     if (ice & Tair(n) <= 0){
       kzn = kz
@@ -275,6 +278,8 @@ run_thermalmodel <- function(u, startTime, endTime,
         (Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) +
            abs(H[1+1]-H[1]) * area[1]/(dx) * 1/(4184 * calc_dens(un[1]) ) +
            Hg[1]) * dt/area[1]
+      tracer[1] = tracern[1] +
+        (area[1] * (kzn[1+1]-kzn[1])/dx * 1 / dx * (tracern[1+1] -  tracern[1])) *dt/area[1]
       
       # all other layers in between
       for (i in 2:(nx-1)){
@@ -282,11 +287,15 @@ run_thermalmodel <- function(u, startTime, endTime,
           (area[i] * kzn[i] * 1 / dx**2 * (un[i+1] - 2 * un[i] + un[i-1]) +
              abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ) +
              Hg[i])* dt/area[i]
+        tracer[i] = tracern[i] +
+          (area[i] * kzn[i] * 1 / dx**2 * (tracern[i+1] - 2 * tracern[i] + tracern[i-1])) *dt/area[i]
       }
       # bottom layer
       u[nx] = un[nx] +
         abs(H[nx]-H[nx-1]) * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx]) +
                                                            Hg[nx]/area[nx]) * dt
+      tracer[nx] = tracern[nx] +
+        (area[nx] * (kzn[nx]-kzn[nx-1])/nx * 1 / dx * (tracern[nx] -  tracern[nx-1])) *dt/area[nx]
     }
     
     ## (3) TURBULENT MIXING OF MIXED LAYER
@@ -420,6 +429,7 @@ run_thermalmodel <- function(u, startTime, endTime,
     
     n2m[, match(n, seq(startTime, endTime, dt))] <- n2
     um[, match(n, seq(startTime, endTime, dt))] <- u
+    tracerm[, match(n, seq(startTime, endTime, dt))] <- tracer
     
   
     
@@ -507,6 +517,7 @@ run_thermalmodel <- function(u, startTime, endTime,
               'thermoclinedepth' = therm.z,
               'endtime' = endTime,
               'average' = df.avg.sim,
-              'agents' = magents))
+              'agents' = magents,
+              'tracer' = tracerm))
 }
 
