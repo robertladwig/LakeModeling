@@ -208,6 +208,8 @@ run_thermalmodel <- function(u, startTime, endTime,
     kz = eddy_diffusivity(calc_dens(un), depth, 9.81, 998.2, ice, area) / 86400
     tracern = tracer
     
+    # kz = rep(1e-6, nx)
+    
     if (ice & Tair(n) <= 0){
       kzn = kz
       absorp = 1 - 0.7
@@ -278,9 +280,10 @@ run_thermalmodel <- function(u, startTime, endTime,
         (Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) +
            abs(H[1+1]-H[1]) * area[1]/(dx) * 1/(4184 * calc_dens(un[1]) ) +
            Hg[1]) * dt/area[1]
+      # tracer[1] = tracern[1] +
+      #   (area[1] * abs((kzn[1+1]-kzn[1])/dx) * 1 / dx * (tracern[1+1] -  tracern[1])) *dt/area[1]
       tracer[1] = tracern[1] +
-        (area[1] * abs((kzn[1+1]-kzn[1])/dx) * 1 / dx * (tracern[1+1] -  tracern[1])) *dt/area[1]
-      
+        (area[1] * kzn[1] * 1 / dx**2 * (-2 * tracern[1] + 2*  tracern[1+1])) *dt/area[1]
       # all other layers in between
       for (i in 2:(nx-1)){
         u[i] = un[i] +
@@ -294,8 +297,10 @@ run_thermalmodel <- function(u, startTime, endTime,
       u[nx] = un[nx] +
         abs(H[nx]-H[nx-1]) * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx]) +
                                                            Hg[nx]/area[nx]) * dt
+      # tracer[nx] = tracern[nx] +
+      #   (area[nx] * (kzn[nx]-kzn[nx-1])/nx * 1 / dx * (tracern[nx] -  tracern[nx-1])) *dt/area[nx]
       tracer[nx] = tracern[nx] +
-        (area[nx] * (kzn[nx]-kzn[nx-1])/nx * 1 / dx * (tracern[nx] -  tracern[nx-1])) *dt/area[nx]
+        (area[nx] * kzn[nx] * 1 / dx**2 * (-2 *tracern[nx] +2 *  tracern[nx-1])) *dt/area[nx]
     }
     
     ## (3) TURBULENT MIXING OF MIXED LAYER
@@ -448,7 +453,7 @@ run_thermalmodel <- function(u, startTime, endTime,
     agents <- agents + intdKdz * dt +
       rnorm(length(agents),0,1) * sqrt(2 * intkzn * (agents +
                                                     0.5 * intdKdz *dt) * dt)
-    agents[agents >= max(seq(1,nx)*dx)] = NA #max(seq(1,nx)*dx)
+    agents[agents >= max(seq(1,nx)*dx)] = max(seq(1,nx)*dx)
     agents[agents <= min(seq(1,nx)*dx)] = min(seq(1,nx)*dx)
     magents[, match(n, seq(startTime, endTime, dt))] <- agents
   }

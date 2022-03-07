@@ -19,7 +19,7 @@ source('1D_HeatMixing_functions_IBM.R')
 ## lake configurations
 zmax = 25 # maximum lake depth
 nx = 25 # number of layers we will have
-dt = 3600 # 24 hours times 60 min/hour times 60 seconds/min
+dt = 600 # 24 hours times 60 min/hour times 60 seconds/min
 dx = zmax/nx # spatial step
 
 ## area and depth values of our lake 
@@ -37,7 +37,7 @@ u_ini <- initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
                      processed_meteo = meteo_all[[1]])
 
 ### EXAMPLE RUNS
-hydrodynamic_timestep = 24 * dt
+hydrodynamic_timestep = 24 * 3600
 total_runtime <- 365
 startingDate <- meteo_all[[1]]$datetime[1]
 
@@ -54,23 +54,10 @@ avgtemp <- matrix(NA, ncol = 6,
                 nrow = total_runtime * hydrodynamic_timestep/ dt)
 if (exists('res')) {remove('res')}
 
-for (i in 1:total_runtime){
-  if (exists('res')){
-    u = res$temp[, ncol(res$temp)]
-    startTime = res$endtime
-    endTime =  res$endtime + hydrodynamic_timestep -1
-    ice = res$icefla
-    Hi = res$icethickness 
-    iceT = res$icemovAvg
-    supercooled = res$supercooled
-    kd_light = NULL
-    matrix_range = max(1, (startTime/dt)):((endTime/dt))
-    agents = res$agents[, ncol(res$agents)]
-    tracer = res$tracer[, ncol(res$tracer)]
-  } else {
+
     u = u_ini
     startTime = 1
-    endTime = hydrodynamic_timestep - 1
+    endTime = total_runtime * 86400
     ice = FALSE
     Hi = 0
     iceT = 6
@@ -80,7 +67,7 @@ for (i in 1:total_runtime){
     agents = c(rep(10,nind))
     tracer = u_ini * 1e-6
     tracer[10] = 100
-  }
+  
   res <-  run_thermalmodel(u = u, 
                             startTime = startTime, 
                             endTime =  endTime, 
@@ -102,22 +89,18 @@ for (i in 1:total_runtime){
                             agents = agents,
                            tracer = tracer)
 
-  temp[, matrix_range] =  res$temp
-  diff[, matrix_range] =  res$diff
-  individuals[, matrix_range] =  res$agents
-  tracers[, matrix_range] =  res$tracer
-  avgtemp[matrix_range,] <- as.matrix(res$average)
+  temp =  res$temp
+  diff =  res$diff
+  individuals =  res$agents
+  tracers=  res$tracer
+  avgtemp<- as.matrix(res$average)
   
   average <- res$average %>%
     mutate(datetime = as.POSIXct(startingDate + time),
            Date = as.Date(datetime, format = "%m/%d/%Y")) %>%
     # group_by(datetime) %>%
     summarise_all(mean)
-  
-  ## run C-P-O2 model with input from ''average''
-  ## derive kd value and put this in as input for ''run_thermalmodel'', e.g. 
-  ## '' kd <- 0.5 '' and then change L 59 to '' kd_light = kd '' 
-}
+
 
 # plotting for checking model output and performance
 plot(seq(1, ncol(temp))*dt/24/3600, temp[1,], col = 'red', type = 'l', 
@@ -126,6 +109,14 @@ for (i in 2:nx){
   lines(seq(1, ncol(temp))*dt/24/3600, temp[i,], 
         lty = 'dashed',lwd =2)
 }
+
+plot(seq(1, ncol(tracers))*dt/24/3600, tracers[1,], col = 'red', type = 'l', 
+     xlab = 'Time (d)', ylab='Tracer (%)', ylim=c(-1,100), lwd = 2)
+for (i in 2:nx){
+  lines(seq(1, ncol(tracers))*dt/24/3600, tracers[i,], 
+        lty = 'dashed',lwd =2)
+}
+lines(seq(1, ncol(tracers))*dt/24/3600,colSums(tracers), col = 'blue')
 
 time =  seq(1, ncol(temp), 1)
 avgtemp = as.data.frame(avgtemp)
@@ -163,10 +154,6 @@ colnames(df.tracer) <- c("time", as.character(paste0(seq(1,nrow(tracers)))))
 m.df.tracer <- reshape2::melt(df.tracer, "time")
 
 plot(colSums(tracers))
-plot(colSums(tracers),xlim=c(2343,2400),ylim=c(80,86))
-diff[,2342]
-diff[,2343]
-plot(colSums(tracers), ylim=c(95,100),xlim=c(1930,1950))
 losses <- c(rep(0, nrow(tracers)))
 for (j in 1:nrow(tracers)){
   losses[j]=sum(tracers[j,tracers[j,]<=0],na.rm = T)
@@ -175,7 +162,7 @@ for (j in 1:nrow(tracers)){
 ggplot(m.df.tracer, aes((time), as.numeric(variable))) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
   scale_fill_gradientn(limits = c(0,100),
-                       colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
+                       colours = rev(RColorBrewer::brewer.pal(11, 'BrBG')))+
   theme_minimal()  +xlab('Time') +
   ylab('Depth') +
   labs(fill = 'Tracer [-]')+
@@ -188,15 +175,9 @@ m.df.ind <- reshape2::melt(df.ind, "time")
 df.diff <- data.frame(cbind(time, t(diff)) )
 colnames(df.diff) <- c("time", as.character(paste0(seq(1,nrow(diff)))))
 m.df.diff <- reshape2::melt(df.diff, "time")
-library(gganimate)
-g1<-ggplot(m.df) +
-  geom_path(aes(value, as.numeric(as.character(variable)))) +
-  theme_minimal()  +xlab('Temp [degC]') +
-  ylab('Depth') + 
-  scale_y_reverse() 
 
 ## vertical temperature profiles
-for (i in seq(1,ncol(temp), length.out = 200)){
+for (i in 1:45){#seq(1,ncol(temp), length.out = 200)){
   n = i
   i = floor(i)
   
@@ -230,7 +211,7 @@ for (i in seq(1,ncol(temp), length.out = 200)){
   
   g=g1 + g2 + plot_layout(widths = c(4, 1)); g
   
-  ggsave(paste0('../../animation_ibm/pic_',match(n, seq(1,ncol(temp),length.out=200)),'.png'),
+  ggsave(paste0('../../animation_ibm/pic_',match(n, 1:45),'.png'),#seq(1,ncol(temp),length.out=200)),'.png'),
          width = 4, height = 5, units = 'in')
   
 }
