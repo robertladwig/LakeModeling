@@ -19,7 +19,7 @@ source('1D_HeatMixing_functions_IBM.R')
 ## lake configurations
 zmax = 25 # maximum lake depth
 nx = 25 # number of layers we will have
-dt = 600 # 24 hours times 60 min/hour times 60 seconds/min
+dt = 3600 # 24 hours times 60 min/hour times 60 seconds/min
 dx = zmax/nx # spatial step
 
 ## area and depth values of our lake 
@@ -177,7 +177,7 @@ colnames(df.diff) <- c("time", as.character(paste0(seq(1,nrow(diff)))))
 m.df.diff <- reshape2::melt(df.diff, "time")
 
 ## vertical temperature profiles
-for (i in 1:45){#seq(1,ncol(temp), length.out = 200)){
+for (i in seq(1,ncol(temp), length.out = 200)){
   n = i
   i = floor(i)
   
@@ -211,7 +211,7 @@ for (i in 1:45){#seq(1,ncol(temp), length.out = 200)){
   
   g=g1 + g2 + plot_layout(widths = c(4, 1)); g
   
-  ggsave(paste0('../../animation_ibm/pic_',match(n, 1:45),'.png'),#seq(1,ncol(temp),length.out=200)),'.png'),
+  ggsave(paste0('../../animation_ibm/pic_',match(n,seq(1,ncol(temp),length.out=200)),'.png'),
          width = 4, height = 5, units = 'in')
   
 }

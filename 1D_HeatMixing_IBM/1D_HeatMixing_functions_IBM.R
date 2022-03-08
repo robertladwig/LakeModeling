@@ -441,18 +441,21 @@ run_thermalmodel <- function(u, startTime, endTime,
     
     ## (6) Individual-based Modeling
     dKdz = rep(1, (nx))
-    for (i in seq(1, nx-1)){#range(0, nx - 1):
-      dKdz[i] = ( abs(kzn[i+1] - kzn[i]) / (depth[i+1] - depth[i]) )
+    for (i in seq(2, nx-1)){#range(0, nx - 1):
+      dKdz[i] = ( abs(kzn[i+1] - kzn[i-1]) / (2 * dx) )
     }
-    dKdz[nx] = ( abs(kzn[nx-1] - kzn[nx]) / abs(depth[nx-1] - depth[nx]) )
+    dKdz[nx] = ( abs(kzn[nx] - kzn[nx-1]) / abs(depth[nx] - depth[nx-1]) )
+    dKdz[1] = ( abs(kzn[1+1] - kzn[1]) / abs(depth[1+1] - depth[1]) )
     
     intdKdz = approx(seq(1,nx)*dx, dKdz, agents)$y
     intkzn = approx(seq(1,nx)*dx, kzn, 
                     agents + 0.5 * intdKdz * dt)$y
     
-    agents <- agents + intdKdz * dt +
+    chance <- rbinom(n=length(agents),size=1,prob=0.50)
+    chance[chance == 0] = -1
+    agents <- agents + chance * ( intdKdz * dt +
       rnorm(length(agents),0,1) * sqrt(2 * intkzn * (agents +
-                                                    0.5 * intdKdz *dt) * dt)
+                                                    0.5 * intdKdz *dt) * dt))
     agents[agents >= max(seq(1,nx)*dx)] = max(seq(1,nx)*dx)
     agents[agents <= min(seq(1,nx)*dx)] = min(seq(1,nx)*dx)
     magents[, match(n, seq(startTime, endTime, dt))] <- agents
