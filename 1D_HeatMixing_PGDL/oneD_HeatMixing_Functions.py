@@ -362,6 +362,8 @@ def run_thermalmodel(
     x = (dt/86400) / icep
     iceT = iceT * (1 - x) + u[0] * x
     if (iceT <= 0) and Hi < Ice_min:
+      if Hi < 0:
+        Hi = 1e-5
       # if (any(u <= 0) == TRUE){
       supercooled = u < 0
       initEnergy = np.sum((0-u[supercooled])*area[supercooled] * dx * 4.18E6)
@@ -371,10 +373,10 @@ def run_thermalmodel(
       else:
         if (Tair(n) > 0):
           Tice = 0
-          Hi = Hi - max([0, meltP * dt*((absorp*Jsw(n))+(longwave(cc = CC(n), sigma = sigma, Tair = Tair(n), ea = ea(n), emissivity = emissivity, Jlw = Jlw(n)) +
+          Hi = (Hi - max([0, meltP * dt*((absorp*Jsw(n))+(longwave(cc = CC(n), sigma = sigma, Tair = Tair(n), ea = ea(n), emissivity = emissivity, Jlw = Jlw(n)) +
                                                            backscattering(emissivity = emissivity, sigma = sigma, Twater = un[0], eps = eps) +
                                                            latent(Tair = Tair(n), Twater = un[0], Uw = Uw(n ), p2 = p2, pa = Pa(n), ea=ea(n),  RH = RH(n)) + 
-                                                           sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[0], Uw = Uw(n))) )/(1000*333500)])
+                                                           sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[0], Uw = Uw(n))) )/(1000*333500)]))
         else:
           Tice =  ((1/(10 * Hi)) * 0 +  Tair(n)) / (1 + (1/(10 * Hi))) 
           Hi = min(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
@@ -386,9 +388,9 @@ def run_thermalmodel(
     elif (ice == True and Hi >= Ice_min):
       if (Tair(n) > 0):
         Tice = 0
-        Hi = Hi -max([0, meltP * dt*((absorp*Jsw(n))+(backscattering(emissivity = emissivity, sigma = sigma, Twater = un[0], eps = eps) +
+        Hi = (Hi - max([0, meltP * dt*((absorp*Jsw(n))+(backscattering(emissivity = emissivity, sigma = sigma, Twater = un[0], eps = eps) +
                                                          latent(Tair = Tair(n), Twater = un[0], Uw = Uw(n ), p2 = p2, pa = Pa(n), ea=ea(n*dt),  RH = RH(n)) + 
-                                                         sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[0], Uw = Uw(n))) )/(1000*333500)]) 
+                                                         sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[0], Uw = Uw(n))) )/(1000*333500)]))
       else:
         Tice =  ((1/(10 * Hi)) * 0 +  Tair(n*dt)) / (1 + (1/(10 * Hi))) 
         Hi = min(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
@@ -418,7 +420,6 @@ def run_thermalmodel(
   end_time = datetime.datetime.now()
   print((end_time - start_time))
   
-  # TODO: implment buoyancy calcs from rLakeAnalyzer
   bf_sim = np.apply_along_axis(center_buoyancy, axis=1, arr = um.T, depths=depth)
   
 

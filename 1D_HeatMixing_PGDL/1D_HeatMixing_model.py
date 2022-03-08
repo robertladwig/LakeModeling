@@ -33,7 +33,7 @@ u_ini = initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
                      processed_meteo = meteo_all[0])
                      
 hydrodynamic_timestep = 24 * dt
-total_runtime = 365
+total_runtime = 365 * 6
 startingDate = meteo_all[0]['date'][0]
 
 nTotalSteps = int(total_runtime * hydrodynamic_timestep/ dt)
@@ -47,6 +47,7 @@ diff = np.full([nx, nTotalSteps], np.nan)
 meteo = np.full([9, nTotalSteps], np.nan)
 buoyancy = np.full([nx, nTotalSteps], np.nan)
 
+Start = datetime.datetime.now()
 if 'res' in locals() or 'res' in globals():
   del res
   
@@ -124,6 +125,9 @@ for i in range(total_runtime):
   
 # convert averages from array to data frame
 avgtemp_df = pd.DataFrame(avgtemp, columns=["time", "thermoclineDep", "epi", "hypo", "tot", "stratFlag"])
+
+End = datetime.datetime.now()
+print(End - Start)
 
 # epi/hypo/total
 colors = ['#F8766D', '#00BA38', '#619CFF']
