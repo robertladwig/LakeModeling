@@ -160,9 +160,9 @@ for (j in 1:nrow(tracers)){
 }
 
 ggplot(m.df.tracer, aes((time), as.numeric(variable))) +
-  geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
+  geom_raster(aes(fill = (as.numeric(value))), interpolate = TRUE) +
   scale_fill_gradientn(limits = c(0,100),
-                       colours = rev(RColorBrewer::brewer.pal(11, 'BrBG')))+
+                       colours =rainbow(10))+
   theme_minimal()  +xlab('Time') +
   ylab('Depth') +
   labs(fill = 'Tracer [-]')+

@@ -451,11 +451,10 @@ run_thermalmodel <- function(u, startTime, endTime,
     intkzn = approx(seq(1,nx)*dx, kzn, 
                     agents + 0.5 * intdKdz * dt)$y
     
-    chance <- rbinom(n=length(agents),size=1,prob=0.50)
-    chance[chance == 0] = -1
-    agents <- agents + chance * ( intdKdz * dt +
-      rnorm(length(agents),0,1) * sqrt(2 * intkzn * (agents +
-                                                    0.5 * intdKdz *dt) * dt))
+    # chance <- rbinom(n=length(agents),size=1,prob=0.50)
+    # chance[chance == 0] = -1
+    agents <- agents + intdKdz * dt +
+      rnorm(length(agents),0,1) * sqrt(2 * intkzn * dt)
     agents[agents >= max(seq(1,nx)*dx)] = max(seq(1,nx)*dx)
     agents[agents <= min(seq(1,nx)*dx)] = min(seq(1,nx)*dx)
     magents[, match(n, seq(startTime, endTime, dt))] <- agents
