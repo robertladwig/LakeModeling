@@ -219,6 +219,72 @@ df <- df %>%
 write.csv(df, file = 'output/meteorology_input.csv', row.names = F)
 
 
+
+# observed data
+# Package ID: knb-lter-ntl.130.29 Cataloging System:https://pasta.edirepository.org.
+# Data set title: North Temperate Lakes LTER: High Frequency Water Temperature Data - Lake  Mendota Buoy 2006 - current.
+inUrl2  <- "https://pasta.lternet.edu/package/data/eml/knb-lter-ntl/130/29/63d0587cf326e83f57b054bf2ad0f7fe" 
+infile2 <- tempfile()
+try(download.file(inUrl2,infile2,method="curl"))
+if (is.na(file.size(infile2))) download.file(inUrl2,infile2,method="auto")
+
+dt2 <-read.csv(infile2,header=F 
+               ,skip=1
+               ,sep=","  
+               ,quot='"' 
+               , col.names=c(
+                 "sampledate",     
+                 "year4",     
+                 "month",     
+                 "daynum",     
+                 "hour",     
+                 "depth",     
+                 "wtemp",     
+                 "flag_wtemp"    ), check.names=TRUE)
+
+unlink(infile2)
+
+# attempting to convert dt2$sampledate dateTime string to R date structure (date or POSIXct)                                
+tmpDateFormat<-"%Y-%m-%d"
+tmp2sampledate<-as.Date(dt2$sampledate,format=tmpDateFormat)
+# Keep the new dates only if they all converted correctly
+if(length(tmp2sampledate) == length(tmp2sampledate[!is.na(tmp2sampledate)])){dt2$sampledate <- tmp2sampledate } else {print("Date conversion failed for dt2$sampledate. Please inspect the data and do the date conversion yourself.")}                                                                    
+rm(tmpDateFormat,tmp2sampledate) 
+if (class(dt2$year4)=="factor") dt2$year4 <-as.numeric(levels(dt2$year4))[as.integer(dt2$year4) ]               
+if (class(dt2$year4)=="character") dt2$year4 <-as.numeric(dt2$year4)
+if (class(dt2$month)=="factor") dt2$month <-as.numeric(levels(dt2$month))[as.integer(dt2$month) ]               
+if (class(dt2$month)=="character") dt2$month <-as.numeric(dt2$month)
+if (class(dt2$daynum)=="factor") dt2$daynum <-as.numeric(levels(dt2$daynum))[as.integer(dt2$daynum) ]               
+if (class(dt2$daynum)=="character") dt2$daynum <-as.numeric(dt2$daynum)
+if (class(dt2$depth)=="factor") dt2$depth <-as.numeric(levels(dt2$depth))[as.integer(dt2$depth) ]               
+if (class(dt2$depth)=="character") dt2$depth <-as.numeric(dt2$depth)
+if (class(dt2$wtemp)=="factor") dt2$wtemp <-as.numeric(levels(dt2$wtemp))[as.integer(dt2$wtemp) ]               
+if (class(dt2$wtemp)=="character") dt2$wtemp <-as.numeric(dt2$wtemp)
+if (class(dt2$flag_wtemp)!="factor") dt2$flag_wtemp<- as.factor(dt2$flag_wtemp)
+
+
+dt2$bhour <- ifelse(dt2$hour %/% 100 >= 1, dt2$hour/100, dt2$hour)
+dt2$datetime <- as.POSIXct(paste0(dt2$sampledate,' ',dt2$bhour,':00:00'), format = "%Y-%m-%d %H:%M:%S")
+
+obs <- dt2 %>%
+  select(datetime, depth, wtemp)
+
+# idx <- na.omit(match(as.POSIXct(df.sim$datetime), as.POSIXct(obs$datetime) ))
+idx <- (match(as.POSIXct(obs$datetime), as.POSIXct(df$time) ))
+
+# df.sim <- df.sim[idx, ]
+obs <- obs[which(!is.na(idx)), ]
+
+idz <- which(obs$depth %in% seq(0,24,1))
+obs = obs[idz,]
+
+obs <- data.frame(obs)
+obs$depth <- factor(obs$depth)
+
+wide.obs <- reshape(obs, idvar = "datetime", timevar = "depth", direction = "wide")
+write.csv(wide.obs, file = 'output/observed_temp.csv', row.names = F)
+
+
 library(ncdf4)
 library(gotmtools)
 # GOTM

@@ -33,8 +33,7 @@ u_ini = initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
                      processed_meteo = meteo_all[0])
                      
 hydrodynamic_timestep = 24 * dt
-total_runtime = 2
-*365
+total_runtime = 4*365
 startingDate = meteo_all[0]['date'][0]
 
 nTotalSteps = int(total_runtime * hydrodynamic_timestep/ dt)
