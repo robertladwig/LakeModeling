@@ -13,5 +13,8 @@ Output from calibrated 1D models GLM and Simstrat (both k-Epsilon):
 \output\diff_gotm.csv	-	time (rows) over depth (columns) matrix including diffusivity data from GOTM model (diffusion)
 \output\diff_simstrat.csv	-	time (rows) over depth (columns) matrix including diffusivity data from Simstrat model (diffusion)
 
+Field data from under-water monitoring chain:
+\output\observed_temp.csv	-	time (rows) over depth (columns) matrix of measured temperature data
+
 Pseudo scheme:
 temp_total04[t-dt] + meteorology_input[t] + buoyancy[t] --> diff[t] --> temp_diff01[t] --> temp_mix02[t] --> temp_conv03[t] --> temp_total04[t]

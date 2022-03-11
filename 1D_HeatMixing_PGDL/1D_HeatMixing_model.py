@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # source functions (can't figure out how to do this w/out giving full path; sorry)
-os.chdir("/home/cal/Documents/PostDoc/Projects/LakeModeling/1D_HeatMixing_PGDL")
+os.chdir("C:/Users/ladwi/Documents/Projects/R/LakeModeling/1D_HeatMixing_PGDL")
 from oneD_HeatMixing_Functions import get_hypsography, provide_meteorology, initial_profile, run_thermalmodel
 
 ## lake configurations
@@ -34,6 +34,7 @@ u_ini = initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
                      
 hydrodynamic_timestep = 24 * dt
 total_runtime = 365 * 6
+
 startingDate = meteo_all[0]['date'][0]
 
 nTotalSteps = int(total_runtime * hydrodynamic_timestep/ dt)

@@ -364,6 +364,7 @@ def run_thermalmodel(
     if (iceT <= 0) and Hi < Ice_min:
       if Hi < 0:
         Hi = 1e-5
+        
       # if (any(u <= 0) == TRUE){
       supercooled = u < 0
       initEnergy = np.sum((0-u[supercooled])*area[supercooled] * dx * 4.18E6)

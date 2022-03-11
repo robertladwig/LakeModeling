@@ -37,35 +37,27 @@ u_ini <- initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
                      processed_meteo = meteo_all[[1]])
 
 ### EXAMPLE RUNS
-hydrodynamic_timestep = 24 * dt
+hydrodynamic_timestep = 24 * 3600
 total_runtime <- 365
 startingDate <- meteo_all[[1]]$datetime[1]
 
 temp <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
               nrow = nx)
+diff <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+               nrow = nx)
 nind = 1e4
 individuals <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                nrow = nind)
+tracers <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+                      nrow = nx)
 avgtemp <- matrix(NA, ncol = 6,
                 nrow = total_runtime * hydrodynamic_timestep/ dt)
 if (exists('res')) {remove('res')}
 
-for (i in 1:total_runtime){
-  if (exists('res')){
-    u = res$temp[, ncol(res$temp)]
-    startTime = res$endtime
-    endTime =  res$endtime + hydrodynamic_timestep -1
-    ice = res$icefla
-    Hi = res$icethickness 
-    iceT = res$icemovAvg
-    supercooled = res$supercooled
-    kd_light = NULL
-    matrix_range = max(1, (startTime/dt)):((endTime/dt))
-    agents = res$agents[, ncol(res$agents)]
-  } else {
+
     u = u_ini
     startTime = 1
-    endTime = hydrodynamic_timestep - 1
+    endTime = total_runtime * 86400
     ice = FALSE
     Hi = 0
     iceT = 6
@@ -73,7 +65,9 @@ for (i in 1:total_runtime){
     kd_light = NULL
     matrix_range = max(1, (startTime/dt)):((endTime/dt)+1)
     agents = c(rep(10,nind))
-  }
+    tracer = u_ini * 1e-6
+    tracer[10] = 100
+  
   res <-  run_thermalmodel(u = u, 
                             startTime = startTime, 
                             endTime =  endTime, 
@@ -92,22 +86,21 @@ for (i in 1:total_runtime){
                             daily_meteo = meteo_all[[1]],
                             secview = meteo_all[[2]],
                             Cd = 0.0008,
-                            agents = agents)
+                            agents = agents,
+                           tracer = tracer)
 
-  temp[, matrix_range] =  res$temp
-  individuals[, matrix_range] =  res$agents
-  avgtemp[matrix_range,] <- as.matrix(res$average)
+  temp =  res$temp
+  diff =  res$diff
+  individuals =  res$agents
+  tracers=  res$tracer
+  avgtemp<- as.matrix(res$average)
   
   average <- res$average %>%
     mutate(datetime = as.POSIXct(startingDate + time),
            Date = as.Date(datetime, format = "%m/%d/%Y")) %>%
     # group_by(datetime) %>%
     summarise_all(mean)
-  
-  ## run C-P-O2 model with input from ''average''
-  ## derive kd value and put this in as input for ''run_thermalmodel'', e.g. 
-  ## '' kd <- 0.5 '' and then change L 59 to '' kd_light = kd '' 
-}
+
 
 # plotting for checking model output and performance
 plot(seq(1, ncol(temp))*dt/24/3600, temp[1,], col = 'red', type = 'l', 
@@ -116,6 +109,14 @@ for (i in 2:nx){
   lines(seq(1, ncol(temp))*dt/24/3600, temp[i,], 
         lty = 'dashed',lwd =2)
 }
+
+plot(seq(1, ncol(tracers))*dt/24/3600, tracers[1,], col = 'red', type = 'l', 
+     xlab = 'Time (d)', ylab='Tracer (%)', ylim=c(-1,100), lwd = 2)
+for (i in 2:nx){
+  lines(seq(1, ncol(tracers))*dt/24/3600, tracers[i,], 
+        lty = 'dashed',lwd =2)
+}
+lines(seq(1, ncol(tracers))*dt/24/3600,colSums(tracers), col = 'blue')
 
 time =  seq(1, ncol(temp), 1)
 avgtemp = as.data.frame(avgtemp)
@@ -148,23 +149,39 @@ ggplot(m.df, aes((time), as.numeric(variable))) +
   labs(fill = 'Temp [degC]')+
   scale_y_reverse() 
 
-df.ind <- data.frame(cbind(time, t(individuals)) )
-colnames(df.ind) <- c("time", as.character(paste0(seq(from = 1,  by =0.003, length.out = nind))))
-m.df.ind <- reshape2::melt(df.ind, "time")
+df.tracer <- data.frame(cbind(time, t(tracers)) )
+colnames(df.tracer) <- c("time", as.character(paste0(seq(1,nrow(tracers)))))
+m.df.tracer <- reshape2::melt(df.tracer, "time")
 
-library(gganimate)
-g1<-ggplot(m.df) +
-  geom_path(aes(value, as.numeric(as.character(variable)))) +
-  theme_minimal()  +xlab('Temp [degC]') +
-  ylab('Depth') + 
+plot(colSums(tracers))
+losses <- c(rep(0, nrow(tracers)))
+for (j in 1:nrow(tracers)){
+  losses[j]=sum(tracers[j,tracers[j,]<=0],na.rm = T)
+}
+
+ggplot(m.df.tracer, aes((time), as.numeric(variable))) +
+  geom_raster(aes(fill = (as.numeric(value))), interpolate = TRUE) +
+  scale_fill_gradientn(limits = c(0,100),
+                       colours =rainbow(10))+
+  theme_minimal()  +xlab('Time') +
+  ylab('Depth') +
+  labs(fill = 'Tracer [-]')+
   scale_y_reverse() 
 
+df.ind <- data.frame(cbind(time, t(individuals)) )
+colnames(df.ind) <- c("time", as.character(paste0(seq(from = 1e-7,  by =1e-8, length.out = nind))))
+m.df.ind <- reshape2::melt(df.ind, "time")
+
+df.diff <- data.frame(cbind(time, t(diff)) )
+colnames(df.diff) <- c("time", as.character(paste0(seq(1,nrow(diff)))))
+m.df.diff <- reshape2::melt(df.diff, "time")
+
 ## vertical temperature profiles
-for (i in seq(1,ncol(temp), length.out = 300)){
+for (i in seq(1,ncol(temp), length.out = 200)){
   n = i
   i = floor(i)
   
-  sim = m.df %>% 
+  sim = m.df.diff %>% 
     filter(time == time[i]) %>%
     mutate(depth =  as.numeric(as.character(variable)))
   inds = m.df.ind %>% 
@@ -177,11 +194,11 @@ for (i in seq(1,ncol(temp), length.out = 300)){
     geom_point(data = inds, aes(depth, value, col = variable), size = 3) +
     geom_path(data = sim, aes(value, 
                               depth), size = 1.2) +
-    xlab('temp. (deg C)') + ylab('depth (m)')+
+    xlab('Kz (m2 s-1)') + ylab('depth (m)')+
     scale_y_reverse() +
     ggtitle( time[i]) + 
     labs(col='') +
-    xlim(-5, 35) + 
+    xlim(1e-7, 1e-4) +
     theme_light() +
     theme(legend.position = "none") 
   
@@ -194,7 +211,7 @@ for (i in seq(1,ncol(temp), length.out = 300)){
   
   g=g1 + g2 + plot_layout(widths = c(4, 1)); g
   
-  ggsave(paste0('../../animation_ibm/pic_',match(n, seq(1,ncol(temp),length.out=300)),'.png'),
+  ggsave(paste0('../../animation_ibm/pic_',match(n,seq(1,ncol(temp),length.out=200)),'.png'),
          width = 4, height = 5, units = 'in')
   
 }
