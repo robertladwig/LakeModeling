@@ -71,7 +71,7 @@ for (i in 1:total_runtime){
     iceT = res$icemovAvg
     supercooled = res$supercooled
     kd_light = NULL
-    matrix_range = max(1, (startTime/dt)):((endTime/dt)) # this returns floats, not ints, after first round through?
+    matrix_range = max(1, (startTime/dt)):((endTime/dt)) # this returns floats, not ints, after first round through? seems to cause issue down below in setting up avgtime
   } else {
     u = u_ini
     startTime = 1
@@ -125,6 +125,7 @@ for (i in 1:total_runtime){
   ## '' kd <- 0.5 '' and then change L 59 to '' kd_light = kd '' 
 }
 
+
 # plotting for checking model output and performance
 plot(seq(1, ncol(temp))*dt/24/3600, temp[1,], col = 'red', type = 'l', 
      xlab = 'Time (d)', ylab='Temperature (degC)', ylim=c(-1,35), lwd = 2)
@@ -137,6 +138,10 @@ time =  startingDate + seq(1, ncol(temp), 1) * dt
 avgtemp = as.data.frame(avgtemp)
 colnames(avgtemp) = c('time', 'epi', 'hyp', 'tot', 'stratFlag', 'thermoclineDep')
 
+# POTENTIAL ISSUE WITH INDEXING AND TIMESTAMPS?
+diff(avgtemp[1:26, "time"])
+tail(avgtemp) # two NA's at the end
+
 ggplot(avgtemp) +
   geom_line(aes(time, epi, col = 'epilimnion')) +
   geom_line(aes(time, hyp, col = 'hypolimnion')) +
@@ -147,7 +152,7 @@ ggplot(avgtemp) +
   theme_minimal() 
 ggplot(avgtemp) +
   geom_line(aes(time, thermoclineDep)) +
-  geom_line(aes(time, stratFlag, col = as.factor(stratFlag))) +
+  geom_point(aes(time, stratFlag, col = as.factor(stratFlag))) +
   scale_y_reverse() +
   theme_minimal() 
 
