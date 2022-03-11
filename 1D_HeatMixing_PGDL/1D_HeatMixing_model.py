@@ -8,8 +8,12 @@ import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# source functions (can't figure out how to do this w/out giving full path; sorry)
-os.chdir("C:/Users/ladwi/Documents/Projects/R/LakeModeling/1D_HeatMixing_PGDL")
+
+# Robert: can add your path(s) here explicitly; otherwise if it's not me I'm assuming it's the one from your scripts
+if os.environ.get("USERNAME") == 'cal':
+     os.chdir("/home/cal/Documents/PostDoc/Projects/LakeModeling/1D_HeatMixing_PGDL")
+else:
+     os.chdir("C:/Users/ladwi/Documents/Projects/R/LakeModeling/1D_HeatMixing_PGDL")
 from oneD_HeatMixing_Functions import get_hypsography, provide_meteorology, initial_profile, run_thermalmodel
 
 ## lake configurations
@@ -33,7 +37,7 @@ u_ini = initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
                      processed_meteo = meteo_all[0])
                      
 hydrodynamic_timestep = 24 * dt
-total_runtime = 365 * 6
+total_runtime = 365 * 8
 
 startingDate = meteo_all[0]['date'][0]
 
@@ -62,8 +66,8 @@ for i in range(total_runtime):
     iceT = res['icemovAvg']
     supercooled = res['supercooled']
     kd_light = None
-    matrix_range_start = max(0, round(startTime/dt))
-    matrix_range_end = round(endTime/dt) 
+    matrix_range_start = deepcopy(matrix_range_end)# max(0, round(startTime/dt))
+    matrix_range_end = matrix_range_start + 24# round(endTime/dt) 
   else:
     u = deepcopy(u_ini)
     startTime = 1
@@ -73,8 +77,8 @@ for i in range(total_runtime):
     iceT = 6
     supercooled = 0
     kd_light = None
-    matrix_range_start = max(0, round(startTime/dt))
-    matrix_range_end = round(endTime/dt)
+    matrix_range_start = 0 #max(0, round(startTime/dt))
+    matrix_range_end = 24 #round(endTime/dt)
     
   res = run_thermalmodel(
     u = u,
@@ -112,7 +116,14 @@ for i in range(total_runtime):
     Ice_min=0.1,
     pgdl_mode = 'on')
   
- 
+  if matrix_range_end - matrix_range_start == 23:
+       print('***')
+       print(matrix_range_end - matrix_range_start)
+       print(startTime)
+       print(startTime/dt)
+       print(endTime)
+       print(endTime/dt)
+       # break
   temp[:, matrix_range_start:(matrix_range_end)] =  res['temp']
   diff[:, matrix_range_start:matrix_range_end] =  res['diff']
   avgtemp[matrix_range_start:matrix_range_end,:] = res['average'].values
