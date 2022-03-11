@@ -419,7 +419,7 @@ def run_thermalmodel(
       meteo_pgdl[8, idn] = np.nanmax(area)
 
   end_time = datetime.datetime.now()
-  # print((end_time - start_time))
+   print((end_time - start_time))
   
   bf_sim = np.apply_along_axis(center_buoyancy, axis=1, arr = um.T, depths=depth)
   

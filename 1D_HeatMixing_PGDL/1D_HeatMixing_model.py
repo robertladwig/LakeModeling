@@ -116,14 +116,6 @@ for i in range(total_runtime):
     Ice_min=0.1,
     pgdl_mode = 'on')
   
-  if matrix_range_end - matrix_range_start == 23:
-       print('***')
-       print(matrix_range_end - matrix_range_start)
-       print(startTime)
-       print(startTime/dt)
-       print(endTime)
-       print(endTime/dt)
-       # break
   temp[:, matrix_range_start:(matrix_range_end)] =  res['temp']
   diff[:, matrix_range_start:matrix_range_end] =  res['diff']
   avgtemp[matrix_range_start:matrix_range_end,:] = res['average'].values
