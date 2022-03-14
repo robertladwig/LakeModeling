@@ -175,42 +175,42 @@ df <- data.frame(cbind(time, t(temp)) )
 colnames(df) <- c("time", as.character(paste0('tempDegC_total04_',seq(1,nrow(temp)))))
 df$time <- time
 df <- df %>%
-  filter(time >=  '2009-06-01 00:00:00' & time <= '2009-09-01 00:00:00')
+  filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
 write.csv(df, file = 'output/temp_total04.csv', row.names = F)
 
 df <- data.frame(cbind(time, t(temp_diff)) )
 colnames(df) <- c("time", as.character(paste0('tempDegC_diff01_',seq(1,nrow(temp)))))
 df$time <- time
 df <- df %>%
-  filter(time >=  '2009-06-01 00:00:00' & time <= '2009-09-01 00:00:00')
+  filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
 write.csv(df, file = 'output/temp_diff01.csv', row.names = F)
 
 df <- data.frame(cbind(time, t(temp_mix)) )
 colnames(df) <- c("time", as.character(paste0('tempDegC_mix02_',seq(1,nrow(temp)))))
 df$time <- time
 df <- df %>%
-  filter(time >=  '2009-06-01 00:00:00' & time <= '2009-09-01 00:00:00')
+  filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
 write.csv(df, file = 'output/temp_mix02.csv', row.names = F)
 
 df <- data.frame(cbind(time, t(temp_conv)) )
 colnames(df) <- c("time", as.character(paste0('tempDegC_conv03_',seq(1,nrow(temp)))))
 df$time <- time
 df <- df %>%
-  filter(time >=  '2009-06-01 00:00:00' & time <= '2009-09-01 00:00:00')
+  filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
 write.csv(df, file = 'output/temp_conv03.csv', row.names = F)
 
 df <- data.frame(cbind(time, t(diff)) )
 colnames(df) <- c("time", as.character(paste0('diffM2s-1_',seq(1,nrow(temp)))))
 df$time <- time
 df <- df %>%
-  filter(time >=  '2009-06-01 00:00:00' & time <= '2009-09-01 00:00:00')
+  filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
 write.csv(df, file = 'output/diff.csv', row.names = F)
 
 df <- data.frame(cbind(time, t(buoyancy)) )
 colnames(df) <- c("time", as.character(paste0('n2S-2_',seq(1,nrow(temp)))))
 df$time <- time
 df <- df %>%
-  filter(time >=  '2009-06-01 00:00:00' & time <= '2009-09-01 00:00:00')
+  filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
 write.csv(df, file = 'output/buoyancy.csv', row.names = F)
 
 df <- data.frame(cbind(time, t(meteo)) )
@@ -220,7 +220,7 @@ colnames(df) <- c("time", "AirTemp_degC", "Longwave_Wm-2",
                   "Area_m2")
 df$time <- time
 df <- df %>%
-  filter(time >=  '2009-06-01 00:00:00' & time <= '2009-09-01 00:00:00')
+  filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
 write.csv(df, file = 'output/meteorology_input.csv', row.names = F)
 
 
@@ -287,7 +287,56 @@ obs <- data.frame(obs)
 obs$depth <- factor(obs$depth)
 
 wide.obs <- reshape(obs, idvar = "datetime", timevar = "depth", direction = "wide")
-write.csv(wide.obs, file = 'output/observed_temp.csv', row.names = F)
+
+m.wide.obs <- reshape2::melt(wide.obs, "datetime")
+m.wide.obs$time <- wide.obs$time
+
+ggplot(m.wide.obs, aes((datetime), as.numeric(variable))) +
+  geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
+  scale_fill_gradientn(limits = c(-2,35),
+                       colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
+  theme_minimal()  +xlab('Time') +
+  ylab('Depth') +
+  labs(fill = 'Temp [degC]')+
+  scale_y_reverse() 
+
+
+df <- data.frame(cbind(time, t(temp)) )
+colnames(df) <- c("time", as.character(paste0('tempDegC_total04_',seq(1,nrow(temp)))))
+df$time <- time
+df <- df %>%
+  filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
+
+dat0 = wide.obs[,-1]
+dat0[dat0 < 5] = NA
+dat = zoo::na.approx(dat0) # apply(as.matrix(wide.obs[,-1]), 1, function(x) zoo::na.approx(x))
+# dat2 = do.call(rbind, dat)
+# dat2 = matrix(unlist(dat), ncol = 21, byrow = T)
+dat3 = apply(as.matrix(dat), 1, function(x) approx(seq(0,20,1),x,seq(1,25,1), method = 'linear', rule=2)$y)
+# dat3 = apply(as.matrix(wide.obs[,-1]), 1, function(x) zoo::na.approx(x, x = seq(0,20,1),x_out =seq(1,25,1)))
+dat4 = t(dat3)
+dat5 = apply(as.matrix(dat4), 2, function(x) approx(wide.obs$datetime - wide.obs$datetime[1], x,
+                                                    df$time-df$time[1], method = 'linear', rule=2)$y)
+
+dat.df <- data.frame(cbind(df$time, dat5))
+colnames(dat.df) <- c("time", as.character(paste0('tempDegC_total04_',seq(1,nrow(temp)))))
+dat.df$time <- df$time
+dat.df <- dat.df %>%
+  filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
+
+m.dat.df <- reshape2::melt(dat.df, "time")
+m.dat.df$time <- df$time
+
+ggplot(m.dat.df, aes((time), as.numeric(variable))) +
+  geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
+  scale_fill_gradientn(limits = c(-2,35),
+                       colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
+  theme_minimal()  +xlab('Time') +
+  ylab('Depth') +
+  labs(fill = 'Temp [degC]')+
+  scale_y_reverse() 
+
+write.csv(dat.df, file = 'output/observed_temp.csv', row.names = F)
 
 
 library(ncdf4)
@@ -323,7 +372,7 @@ str_depths <- abs(as.numeric(colnames(got)[2:ncol(got)]))
 colnames(got) <- c("datetime", paste("diffM2s-2_", str_depths, sep = ""))
 
 df <- as.data.frame(got) %>%
-  filter(datetime >=  '2009-06-01 00:00:00' & time <= '2009-09-01 00:00:00')
+  filter(datetime >=  '2009-06-04 09:00:00' & datetime <= '2009-09-01 00:00:00')
 write.csv(df, file = 'output/diff_gotm.csv', row.names = F)
 
 # Simstrat
@@ -374,5 +423,5 @@ if(length(depths) != (ncol(diff) - 1)){
 }
 
 df <- diff %>%
-  filter(datetime >=  '2009-06-01 00:00:00' & time <= '2009-09-01 00:00:00')
+  filter(datetime >=  '2009-06-04 09:00:00' & datetime <= '2009-09-01 00:00:00')
 write.csv(df, file = 'output/diff_simstrat.csv', row.names = F)
