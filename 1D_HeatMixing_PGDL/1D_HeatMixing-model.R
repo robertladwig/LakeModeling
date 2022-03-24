@@ -101,7 +101,8 @@ for (i in 1:total_runtime){
                             daily_meteo = meteo_all[[1]],
                             secview = meteo_all[[2]],
                             Cd = 0.0008,
-                            pgdl_mode = 'on')
+                            pgdl_mode = 'on',
+                           scheme = 'implicit')
 
   temp[, matrix_range] =  res$temp
   diff[, matrix_range] =  res$diff

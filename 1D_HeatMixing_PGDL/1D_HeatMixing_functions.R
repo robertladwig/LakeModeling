@@ -251,18 +251,31 @@ run_thermalmodel <- function(u, startTime, endTime,
     if (scheme == 'implicit'){
       ## (2) DIFFUSION
       # surface layer
-      un[1] = un[1] +    Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) * dt/area[1]
-      # # bottom layer
-      un <- un  + (H * area/(dx) * 1/(4184 * calc_dens(un) ))* dt/area
+      u[1] = un[1] +
+        (Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) +
+           abs(H[1+1]-H[1]) * area[1]/(dx) * 1/(4184 * calc_dens(un[1]) ) +
+           Hg[1]) * dt/area[1]
       
-      j <- length(kzn)
+      # all other layers in between
+      for (i in 2:(nx-1)){
+        u[i] = un[i] +
+          (abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ) +
+             Hg[i])* dt/area[i]
+      }
+      # bottom layer
+      u[nx] = un[nx] +
+        abs(H[nx]-H[nx-1]) * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx]) +
+                                                           Hg[nx]/area[nx]) * dt
+      
+      j <- length(u)
       y <- array(0, c(j,j))
       
       # all other layers in between
       # Linearized heat conservation equation matrix (diffusion only)
-      az <- (dt/dx**2) * kzn                                         #coefficient for i-1
-      cz <- (dt/dx**2) * kzn                #coefficient for i+1
-      bz <- 1 + 2 * (dt/dx**2) * kzn                                                         #coefficient for i+1
+      alpha = (dt/dx**2) * kzn    
+      az <- rep(-alpha,j-1  )                                #coefficient for i-1
+      bz <- rep(2 * (1 + alpha),j)                                                      #coefficient for i
+      cz <- rep(-alpha,j-1  )                #coefficient for i+1
       #Boundary conditions, surface
       az[1] <- 0
       #cz(1) remains unchanged
@@ -271,14 +284,21 @@ run_thermalmodel <- function(u, startTime, endTime,
       #az(end) remains unchanged
       cz[length(cz)] <- 0
       bz[length(bz)] <- 1 #+ (dt/dx**2) * kzn    + cz[length(cz)]
-      y[0 + 1:(j - 1) * (j + 1)] <- -cz[-length(bz)]	# superdiagonal
+      y[0 + 1:(j - 1) * (j + 1)] <- cz[-length(bz)]	# superdiagonal
       y[1 + 0:(j - 1) * (j + 1)] <- bz	# diagonal
-      y[2 + 0:(j - 2) * (j + 1)] <- -az[-1] 	# subdiagonal
+      y[2 + 0:(j - 2) * (j + 1)] <- az[-1] 	# subdiagonal
       
       y[1,2] <- 0#- 2 * (dt/dx**2) * kzn[1]           
-      y[nrow(y), (ncol(y)-1)] = 0#-2 * (dt/dx**2) * kzn[ncol(y)]           
+      y[nrow(y), (ncol(y)-1)] = 0#-2 * (dt/dx**2) * kzn[ncol(y)]       
       
-      u <- solve(y, un)
+      mn <- rep(0, j)
+      mn[1] = u[1]
+      mn[j] = u[j]
+      for (g in 2:(j-1)){
+        mn[g] = alpha * u[g-1] + 2 * (1-alpha)*u[g] + alpha * u[g+1]
+      }
+
+      u  <- solve(y, mn)
     }
     
     ## (2) DIFFUSION
@@ -428,10 +448,10 @@ run_thermalmodel <- function(u, startTime, endTime,
       if (Tair(n) > 0){
         Tice <- 0
         Hi = Hi -max(c(0, meltP * dt*((absorp*Jsw(n))+(backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
-                                                         latent(Tair = Tair(n), Twater = un[1], Uw = Uw(n ), p2 = p2, pa = Pa(n), ea=ea(n*dt),  RH = RH(n)) + 
+                                                         latent(Tair = Tair(n), Twater = un[1], Uw = Uw(n ), p2 = p2, pa = Pa(n), ea=ea(n),  RH = RH(n)) + 
                                                          sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[1], Uw = Uw(n))) )/(1000*333500))) 
       } else {
-        Tice <-  ((1/(10 * Hi)) * 0 +  Tair(n*dt)) / (1 + (1/(10 * Hi))) 
+        Tice <-  ((1/(10 * Hi)) * 0 +  Tair(n)) / (1 + (1/(10 * Hi))) 
         Hi <- min(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
       }
       u[supercooled] = 0
