@@ -248,8 +248,9 @@ run_thermalmodel <- function(u, startTime, endTime,
     Hg[which(is.na(Hg))] <- min(Hg, na.rm = TRUE)
     
     # add heat to all layers
+    ## (2) DIFFUSION
     if (scheme == 'implicit'){
-      ## (2) DIFFUSION
+      ## (2a) Boundary heat addition
       # surface layer
       u[1] = un[1] +
         (Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) +
@@ -267,6 +268,8 @@ run_thermalmodel <- function(u, startTime, endTime,
         abs(H[nx]-H[nx-1]) * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx]) +
                                                            Hg[nx]/area[nx]) * dt
       
+      
+      ## (2b) Diffusion by Crank-Nicholson Scheme (CNS)
       j <- length(u)
       y <- array(0, c(j,j))
       
@@ -301,9 +304,9 @@ run_thermalmodel <- function(u, startTime, endTime,
       u  <- solve(y, mn)
     }
     
-    ## (2) DIFFUSION
+
     # surface layer
-    if (scheme == 'explicit'){
+    if (scheme == 'explicit'){ # forward time centered space (FTCS)
       u[1] = un[1] +
         (Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) +
            abs(H[1+1]-H[1]) * area[1]/(dx) * 1/(4184 * calc_dens(un[1]) ) +
