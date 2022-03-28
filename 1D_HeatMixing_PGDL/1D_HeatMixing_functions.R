@@ -98,7 +98,8 @@ get_hypsography <- function(hypsofile, dx, nx){
   hyps <- read_csv(hypsofile)
   area = approx(hyps$Depth_meter,hyps$Area_meterSquared,seq(1,nx*dx, 
                                                             length.out= nx))$y
-  area[which.min(area)] <- 1e-2
+  # area[which.min(area)] <- 1e-2
+  area[nx] <- area[nx-1] -1
   depth = depth= seq(1,nx*dx, length.out = nx)
   volume <- c(rev(diff(pracma::cumtrapz(area, depth))*(-1)),0)
   volume[which(volume == 0)] = min(volume[-which(volume == 0)])
@@ -139,6 +140,21 @@ latent <- function(Tair, Twater, Uw, p2, pa, ea, RH){ # evaporation / latent hea
   ew = fw * 10 * ((0.7859+0.03477* Twater)/(1+0.00412* Twater))
   latent = fu * p2 * (ew - ea)# * 1.33) #* 1/6
   return((-1) * latent)
+}
+
+# https://www.r-bloggers.com/2017/08/the-trapezoidal-rule-of-numerical-integration-in-r/
+composite.trapezoid <- function(f, a, b, n) {
+  if (is.function(f) == FALSE) {
+    stop('f must be a function with one parameter (variable)')
+  }
+  
+  h <- (b - a) / n
+  
+  j <- 1:n - 1
+  xj <- a + j * h
+  approx <- (h / 2) * (f(a) + 2 * sum(f(xj)) + f(b))
+  
+  return(approx)
 }
 
 run_thermalmodel <- function(u, startTime, endTime, 
@@ -235,17 +251,48 @@ run_thermalmodel <- function(u, startTime, endTime,
     
     ## (1) Heat addition
     # surface heat flux
-    Q <- (absorp * Jsw(n) + longwave(cc = CC(n), sigma = sigma, Tair = Tair(n), ea = ea(n), emissivity = emissivity, Jlw = Jlw(n)) + #longwave(emissivity = emissivity, Jlw = Jlw(n)) +
+    Q <- (absorp * Jsw(n) + 
+            longwave(cc = CC(n), sigma = sigma, Tair = Tair(n), ea = ea(n), emissivity = emissivity, Jlw = Jlw(n)) + #longwave(emissivity = emissivity, Jlw = Jlw(n)) +
             backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
             latent(Tair = Tair(n), Twater = un[1], Uw = Uw(n), p2 = p2, pa = Pa(n), ea=ea(n), RH = RH(n)) + 
             sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[1], Uw = Uw(n)))  
+
+    # integration through composite trapezoidal rule
+    # dn = 1e5
+    # a = n - dt
+    # b = n
+    # h <- (b - a) / dn
+    # 
+    # j <- 1:dn - 1
+    # xj <- a + j * h
+    # 
+    # Q <- (absorp *  (h / 2) * (Jsw(a)  + 2 * sum(Jsw(xj) ) + Jsw(b) )  +
+    #         (h / 2) * ( longwave(cc = CC(a), sigma = sigma, Tair = Tair(a), ea = ea(a), emissivity = emissivity, Jlw = Jlw(a))  +
+    #                       2 * sum( longwave(cc = CC(xj), sigma = sigma, Tair = Tair(xj), ea = ea(xj), emissivity = emissivity, Jlw = Jlw(xj)) ) +
+    #                       longwave(cc = CC(b), sigma = sigma, Tair = Tair(b), ea = ea(b), emissivity = emissivity, Jlw = Jlw(b)) ) +
+    #         backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) * dt +
+    #         (h / 2) * (latent(Tair = Tair(a), Twater = un[1], Uw = Uw(a), p2 = p2, pa = Pa(a), ea=ea(a), RH = RH(a)) +
+    #                      2 * sum(latent(Tair = Tair(xj), Twater = un[1], Uw = Uw(xj), p2 = p2, pa = Pa(xj), ea=ea(xj), RH = RH(xj))) +
+    #                      latent(Tair = Tair(b), Twater = un[1], Uw = Uw(b), p2 = p2, pa = Pa(b), ea=ea(b), RH = RH(b))) +
+    #         (h / 2) * (sensible(p2 = p2, B = B, Tair = Tair(a), Twater = un[1], Uw = Uw(a))) +
+    #                      2 * sum(sensible(p2 = p2, B = B, Tair = Tair(xj), Twater = un[1], Uw = Uw(xj))) +
+    #                     sensible(p2 = p2, B = B, Tair = Tair(b), Twater = un[1], Uw = Uw(b)))
     
     # heat addition over depth
     H =  (1- infra) * (Jsw(n))  * #
       exp(-(kd(n) ) *seq(dx,nx*dx,length.out=nx)) 
-    
-    Hg <- (area-lead(area))/dx * Hgeo/(4181 * calc_dens(un[1])) 
-    Hg[which(is.na(Hg))] <- min(Hg, na.rm = TRUE)
+
+    # integration through composite trapezoidal rule
+    # H <- (h / 2) * ((1- infra) * (Jsw(a))  * #
+    #                   exp(-(kd(a) ) *seq(dx,nx*dx,length.out=nx))  +
+    #                   2 * sum((1- infra) * (Jsw(xj))  * #
+    #                             exp(-(kd(xj) ) *seq(dx,nx*dx,length.out=nx)) ) +
+    #                   (1- infra) * (Jsw(b))  * #
+    #                   exp(-(kd(b) ) *seq(dx,nx*dx,length.out=nx)) )
+        
+    Hg <- (area-lead(area))/dx * Hgeo/(4181 * calc_dens(un)) 
+    Hg[nx] <- (area[nx-1]-area[nx])/dx * Hgeo/(4181 * calc_dens(un[nx])) 
+      #min(Hg, na.rm = TRUE)
     
     # add heat to all layers
     ## (2) DIFFUSION
@@ -257,18 +304,34 @@ run_thermalmodel <- function(u, startTime, endTime,
            abs(H[1+1]-H[1]) * area[1]/(dx) * 1/(4184 * calc_dens(un[1]) ) +
            Hg[1]) * dt/area[1]
       
+      # integration through composite trapezoidal rule
+      # u[1] = un[1] +
+      #   (Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) +
+      #      abs(H[1+1]-H[1]) * area[1]/(dx) * 1/(4184 * calc_dens(un[1]) )) * 1/area[1]+
+      #      (Hg[1]) * dt/area[1]
+
       # all other layers in between
       for (i in 2:(nx-1)){
         u[i] = un[i] +
           (abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ) +
              Hg[i])* dt/area[i]
+        
+        # integration through composite trapezoidal rule
+        # u[i] = un[i] +
+        #   (abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) )) * 1/area[i]+
+        #      (Hg[i])* dt/area[i]
       }
+
       # bottom layer
       u[nx] = un[nx] +
-        abs(H[nx]-H[nx-1]) * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx]) +
-                                                           Hg[nx]/area[nx]) * dt
+      (abs(H[nx]-H[nx-1]) * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx])) +
+      Hg[nx]/area[nx]) * dt
       
-      
+      # integration through composite trapezoidal ruled
+      # u[nx] = un[nx] +
+      #   (abs(H[nx]-H[nx-1]) * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx]))) +
+      #                                                      (Hg[nx]/area[nx]) * dt
+
       ## (2b) Diffusion by Crank-Nicholson Scheme (CNS)
       j <- length(u)
       y <- array(0, c(j,j))

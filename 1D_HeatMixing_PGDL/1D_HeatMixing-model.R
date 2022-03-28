@@ -19,7 +19,7 @@ source('1D_HeatMixing_functions.R')
 ## lake configurations
 zmax = 25 # maximum lake depth
 nx = 25 # number of layers we will have
-dt = 3600 # 24 hours times 60 min/hour times 60 seconds/min
+dt = 3600 * 1 # 24 hours times 60 min/hour times 60 seconds/min
 dx = zmax/nx # spatial step
 
 ## area and depth values of our lake 
@@ -37,7 +37,7 @@ u_ini <- initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
                      processed_meteo = meteo_all[[1]])
 
 ### EXAMPLE RUNS
-hydrodynamic_timestep = 24 * dt
+hydrodynamic_timestep = 24 * 3600 #24/4 * dt
 total_runtime <- 365
 startingDate <- meteo_all[[1]]$datetime[1]
 
@@ -118,12 +118,8 @@ for (i in 1:total_runtime){
   average <- res$average %>%
     mutate(datetime = as.POSIXct(startingDate + time),
            Date = as.Date(datetime, format = "%m/%d/%Y")) %>%
-    # group_by(datetime) %>%
     summarise_all(mean)
   
-  ## run C-P-O2 model with input from ''average''
-  ## derive kd value and put this in as input for ''run_thermalmodel'', e.g. 
-  ## '' kd <- 0.5 '' and then change L 59 to '' kd_light = kd '' 
 }
 
 
@@ -138,10 +134,6 @@ for (i in 2:nx){
 time =  startingDate + seq(1, ncol(temp), 1) * dt
 avgtemp = as.data.frame(avgtemp)
 colnames(avgtemp) = c('time', 'epi', 'hyp', 'tot', 'stratFlag', 'thermoclineDep')
-
-# POTENTIAL ISSUE WITH INDEXING AND TIMESTAMPS?
-diff(avgtemp[1:26, "time"])
-tail(avgtemp) # two NA's at the end
 
 ggplot(avgtemp) +
   geom_line(aes(time, epi, col = 'epilimnion')) +
