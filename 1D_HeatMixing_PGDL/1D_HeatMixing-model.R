@@ -55,10 +55,15 @@ temp_ice <- matrix(NA, ncol = (total_runtime * hydrodynamic_timestep/ dt) ,
                     nrow = nx)
 diff <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                nrow = nx)
-meteo <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
-               nrow = 9)
+# meteo <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+#                nrow = 9)
 buoyancy <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                nrow = nx)
+
+# do the meteo interpolation all at the start
+meteo = get_interp_drivers(meteo_all=meteo_all, total_runtime=total_runtime, 
+                           hydrodynamic_timestep=hydrodynamic_timestep, dt=dt, method="integrate")
+
 if (exists('res')) {remove('res')}
 
 for (i in 1:total_runtime){
@@ -72,6 +77,8 @@ for (i in 1:total_runtime){
     supercooled = res$supercooled
     kd_light = NULL
     matrix_range = max(1, (startTime/dt)):((endTime/dt)) # this returns floats, not ints, after first round through? seems to cause issue down below in setting up avgtime
+    matrix_range_start = max(1, round(startTime/dt) + 1)
+    matrix_range_end = round(endTime/dt)
   } else {
     u = u_ini
     startTime = 1
@@ -82,6 +89,8 @@ for (i in 1:total_runtime){
     supercooled = 0
     kd_light = NULL
     matrix_range = max(1, (startTime/dt)):((endTime/dt)+1)
+    matrix_range_start = max(1, round(startTime/dt))
+    matrix_range_end = round(endTime/dt)
   }
   res <-  run_thermalmodel(u = u, 
                             startTime = startTime, 
@@ -98,22 +107,22 @@ for (i in 1:total_runtime){
                             area = hyps_all[[1]], # area
                             depth = hyps_all[[2]], # depth
                             volume = hyps_all[[3]], # volume
-                            daily_meteo = meteo_all[[1]],
-                            secview = meteo_all[[2]],
+                            daily_meteo = meteo[,matrix_range_start:matrix_range_end],
+                            # secview = meteo_all[[2]],
                             Cd = 0.0008,
                             pgdl_mode = 'on',
                            scheme = 'implicit')
 
-  temp[, matrix_range] =  res$temp
-  diff[, matrix_range] =  res$diff
-  avgtemp[matrix_range,] <- as.matrix(res$average)
-  temp_diff[, matrix_range] =  res$temp_diff
-  temp_mix[, matrix_range] =  res$temp_mix
-  temp_conv[, matrix_range] =  res$temp_conv
-  temp_ice[, matrix_range] =  res$temp_ice
-  buoyancy[, matrix_range] =  res$temp
-  meteo[, matrix_range] =  res$meteo_input
-  buoyancy[, matrix_range] = res$buoyancy_pgdl
+  temp[, matrix_range_start:matrix_range_end] =  res$temp
+  diff[, matrix_range_start:matrix_range_end] =  res$diff
+  avgtemp[matrix_range_start:matrix_range_end,] <- as.matrix(res$average)
+  temp_diff[, matrix_range_start:matrix_range_end] =  res$temp_diff
+  temp_mix[, matrix_range_start:matrix_range_end] =  res$temp_mix
+  temp_conv[, matrix_range_start:matrix_range_end] =  res$temp_conv
+  temp_ice[, matrix_range_start:matrix_range_end] =  res$temp_ice
+  buoyancy[, matrix_range_start:matrix_range_end] =  res$temp
+  # meteo[, matrix_range_start:matrix_range_end] =  res$meteo_input
+  buoyancy[, matrix_range_start:matrix_range_end] = res$buoyancy_pgdl
   
   average <- res$average %>%
     mutate(datetime = as.POSIXct(startingDate + time),
