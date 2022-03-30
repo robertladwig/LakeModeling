@@ -248,6 +248,8 @@ get_interp_drivers <- function(meteo_all, total_runtime, hydrodynamic_timestep, 
       t()
   }
   
+  rownames(meteo) = c("Jsw", "Jlw", "Tair", "ea", "Uw", "CC", "Pa", "kd", "RH")
+  
   return(meteo)
 }
 
@@ -312,7 +314,7 @@ run_thermalmodel <- function(u, startTime, endTime,
     if (!is.null(kd_light)){
       kd = kd_light
     }else{
-      kd = daily_meteo[8,n]
+      kd = daily_meteo["kd",n]
     }
     
     un = u # prior temperature values
@@ -323,11 +325,11 @@ run_thermalmodel <- function(u, startTime, endTime,
     }
     kz = eddy_diffusivity(calc_dens(un), depth, 9.81, 998.2, ice, area) / 86400
     
-    if (ice & daily_meteo[3,n] <= 0){
+    if (ice & daily_meteo["Tair",n] <= 0){
       kzn = kz
       absorp = 1 - 0.7
       infra = 1 - absorp
-    } else if (ice & daily_meteo[3,n] >= 0){
+    } else if (ice & daily_meteo["Tair",n] >= 0){
       kzn = kz
       absorp = 1 - 0.3
       infra = 1 - absorp
@@ -340,11 +342,11 @@ run_thermalmodel <- function(u, startTime, endTime,
     
     ## (1) Heat addition
     # surface heat flux
-    Q <- (absorp * daily_meteo[1,n] + 
-            longwave(cc = daily_meteo[6,n], sigma = sigma, Tair = daily_meteo[3,n], ea = daily_meteo[4,n], emissivity = emissivity, Jlw = daily_meteo[2,n]) + 
+    Q <- (absorp * daily_meteo["Jsw",n] + 
+            longwave(cc = daily_meteo["CC",n], sigma = sigma, Tair = daily_meteo["Tair",n], ea = daily_meteo["ea",n], emissivity = emissivity, Jlw = daily_meteo["Jlw",n]) + 
             backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
-            latent(Tair = daily_meteo[3,n], Twater = un[1], Uw = daily_meteo[5,n], p2 = p2, pa = daily_meteo[7,n], ea=daily_meteo[4,n], RH = daily_meteo[9,n]) + 
-            sensible(p2 = p2, B = B, Tair = daily_meteo[3,n], Twater = un[1], Uw = daily_meteo[5,n]))
+            latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n], RH = daily_meteo["RH",n]) + 
+            sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n]))
 
     # integration through composite trapezoidal rule
     # dn = 1e5
@@ -368,7 +370,7 @@ run_thermalmodel <- function(u, startTime, endTime,
     #                     sensible(p2 = p2, B = B, Tair = Tair(b), Twater = un[1], Uw = Uw(b)))
     
     # heat addition over depth
-    H =  (1- infra) * (daily_meteo[1,n]) * exp(-(kd ) *depth) 
+    H =  (1- infra) * (daily_meteo["Jsw",n]) * exp(-(kd ) *depth) 
 
     # integration through composite trapezoidal rule
     # H <- (h / 2) * ((1- infra) * (Jsw(a))  * #
@@ -485,13 +487,13 @@ run_thermalmodel <- function(u, startTime, endTime,
     # energy available from wind and the potential energy required to completely 
     # mix the water column to a given depth
     Zcv <- depth %*% area / sum(area) # center of volume
-    tau = 1.225 * Cd * daily_meteo[5,n]^2 # wind shear is air density times wind velocity 
-    if (daily_meteo[5,n] <= 15) {
-      c10 = 0.0005 * sqrt(daily_meteo[5,n])
+    tau = 1.225 * Cd * daily_meteo["Uw",n]^2 # wind shear is air density times wind velocity 
+    if (daily_meteo["Uw",n] <= 15) {
+      c10 = 0.0005 * sqrt(daily_meteo["Uw",n])
     } else {
       c10 = 0.0026
     }
-    shear = sqrt((c10 * calc_dens(un[1]))/1.225) *  daily_meteo[5,n] # shear velocity
+    shear = sqrt((c10 * calc_dens(un[1]))/1.225) *  daily_meteo["Uw",n] # shear velocity
     # coefficient times wind velocity squared
     KE = shear *  tau * dt # kinetic energy as function of wind
     
@@ -581,14 +583,14 @@ run_thermalmodel <- function(u, startTime, endTime,
       if (ice != TRUE) {
         Hi <- Ice_min+(initEnergy/(910*333500))/max(area)
       } else {
-        if (daily_meteo[3,n] > 0){
+        if (daily_meteo["Tair",n] > 0){
           Tice <- 0
-          Hi = Hi -max(c(0, meltP * dt*((absorp*daily_meteo[1,n])+(longwave(cc = daily_meteo[6,n], sigma = sigma, Tair = daily_meteo[3,n], ea = daily_meteo[4,n], emissivity = emissivity, Jlw = daily_meteo[2,n]) +
+          Hi = Hi -max(c(0, meltP * dt*((absorp*daily_meteo["Jsw",n])+(longwave(cc = daily_meteo["CC",n], sigma = sigma, Tair = daily_meteo["Tair",n], ea = daily_meteo["ea",n], emissivity = emissivity, Jlw = daily_meteo["Jlw",n]) +
                                                                      backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
-                                                                     latent(Tair = daily_meteo[3,n], Twater = un[1], Uw = daily_meteo[5,n], p2 = p2, pa = daily_meteo[7,n], ea=daily_meteo[4,n],  RH = daily_meteo[9,n]) + 
-                                                                     sensible(p2 = p2, B = B, Tair = daily_meteo[3,n], Twater = un[1], Uw = daily_meteo[5,n])) )/(1000*333500)))
+                                                                     latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n],  RH = daily_meteo["RH",n]) + 
+                                                                     sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n])) )/(1000*333500)))
         } else {
-          Tice <-  ((1/(10 * Hi)) * 0 + daily_meteo[3,n]) / (1 + (1/(10 * Hi))) 
+          Tice <-  ((1/(10 * Hi)) * 0 + daily_meteo["Tair",n]) / (1 + (1/(10 * Hi))) 
           Hi <- min(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
         }
       }
@@ -599,13 +601,13 @@ run_thermalmodel <- function(u, startTime, endTime,
       }
       Him[ n] <- Hi
     } else if (ice == TRUE & Hi >= Ice_min) {
-      if (daily_meteo[3,n] > 0){
+      if (daily_meteo["Tair",n] > 0){
         Tice <- 0
-        Hi = Hi -max(c(0, meltP * dt*((absorp*daily_meteo[1,n])+(backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
-                                                                   latent(Tair = daily_meteo[3,n], Twater = un[1], Uw = daily_meteo[5,n], p2 = p2, pa = daily_meteo[7,n], ea=daily_meteo[4,n],  RH = daily_meteo[9,n]) + 
-                                                                   sensible(p2 = p2, B = B, Tair = daily_meteo[3,n], Twater = un[1], Uw = daily_meteo[5,n])) )/(1000*333500))) 
+        Hi = Hi -max(c(0, meltP * dt*((absorp*daily_meteo["Jsw",n])+(backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
+                                                                   latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n],  RH = daily_meteo["RH",n]) + 
+                                                                   sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n])) )/(1000*333500))) 
       } else {
-        Tice <-  ((1/(10 * Hi)) * 0 +  daily_meteo[3,n]) / (1 + (1/(10 * Hi))) 
+        Tice <-  ((1/(10 * Hi)) * 0 +  daily_meteo["Tair",n]) / (1 + (1/(10 * Hi))) 
         Hi <- min(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
       }
       u[supercooled] = 0
@@ -620,12 +622,12 @@ run_thermalmodel <- function(u, startTime, endTime,
     if (pgdl_mode == 'on'){
       um_ice[, n] <- u
       
-      meteo_pgdl[1, n] <-  daily_meteo[3,n]
-      meteo_pgdl[2, n] <-   longwave(cc = daily_meteo[6,n], sigma = sigma, Tair = daily_meteo[3,n], ea = daily_meteo[4,n], emissivity = emissivity, Jlw = daily_meteo[2,n]) -
+      meteo_pgdl[1, n] <-  daily_meteo["Tair",n]
+      meteo_pgdl[2, n] <-   longwave(cc = daily_meteo["CC",n], sigma = sigma, Tair = daily_meteo["Tair",n], ea = daily_meteo["ea",n], emissivity = emissivity, Jlw = daily_meteo["Jlw",n]) -
         backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps)
-      meteo_pgdl[3, n] <-   latent(Tair = daily_meteo[3,n], Twater = un[1], Uw = daily_meteo[5,n], p2 = p2, pa = daily_meteo[7,n], ea=daily_meteo[4,n], RH = daily_meteo[9,n])
-      meteo_pgdl[4, n] <-   sensible(p2 = p2, B = B, Tair = daily_meteo[3,n], Twater = un[1], Uw = daily_meteo[5,n])
-      meteo_pgdl[5, n] <-   daily_meteo[1,n]
+      meteo_pgdl[3, n] <-   latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n], RH = daily_meteo["RH",n])
+      meteo_pgdl[4, n] <-   sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n])
+      meteo_pgdl[5, n] <-   daily_meteo["Jsw",n]
       meteo_pgdl[6, n] <-   kd
       meteo_pgdl[7, n] <-   shear
       meteo_pgdl[8, n] <-   tau
