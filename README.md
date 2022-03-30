@@ -12,7 +12,7 @@ Click [here](https://github.com/robertladwig/LakeModeling/blob/main/Manual/1D_In
 - ~~add BC to 1D heat transport, i.e., meteorological driver data~~
 - ~~add macrophyte model~~
 - ~~add ice module~~
-- check numerical stabilities
+- ~~check numerical stabilities~~
 - more advanced turbulence closure scheme for 1D heat transport
 - coupling to reactive biogeochemical processes
   - dissolved oxygen
