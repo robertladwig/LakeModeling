@@ -99,7 +99,7 @@ def get_hypsography(hypsofile, dx, nx):
   out_depths = np.linspace(1, nx*dx, nx)
   area_fun = interp1d(hyps.Depth_meter.values, hyps.Area_meterSquared.values)
   area = area_fun(out_depths)
-  area[area == 0] = 1e-2 # TODO: confirm this is correct
+  area[-1] = area[-2] - 1 # TODO: confirm this is correct
   depth = np.linspace(1, nx*dx, nx)
   
   volume = 0.5 * (area[:-1] + area[1:]) * np.diff(depth)
@@ -270,7 +270,7 @@ def run_thermalmodel(
           abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ) + Hg[i])* dt/area[i])
       # bottom layer
       u[(nx-1)] = (un[(nx-1)] +
-      abs(H[(nx-1)]-H[(nx-1)-1]) * area[(nx-1)]/(area[(nx-1)]*dx) * 1/(4181 * calc_dens(un[(nx-1)]) +
+      (abs(H[(nx-1)]-H[(nx-1)-1]) * area[(nx-1)]/(area[(nx-1)]*dx) * 1/(4181 * calc_dens(un[(nx-1)])) +
       Hg[(nx-1)]/area[(nx-1)]) * dt)
                                                            
     if pgdl_mode == 'on':
@@ -419,7 +419,7 @@ def run_thermalmodel(
       meteo_pgdl[8, idn] = np.nanmax(area)
 
   end_time = datetime.datetime.now()
-   print((end_time - start_time))
+  print((end_time - start_time))
   
   bf_sim = np.apply_along_axis(center_buoyancy, axis=1, arr = um.T, depths=depth)
   
