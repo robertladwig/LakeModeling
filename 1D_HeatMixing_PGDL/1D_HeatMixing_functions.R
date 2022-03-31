@@ -9,9 +9,10 @@ calc_dens <-function(wtemp){
 ## this is our attempt for turbulence closure, estimating eddy diffusivity
 eddy_diffusivity <-function(rho, depth, g, rho_0, ice, area){
   buoy = rep(1, (nx)) * 7e-5
-  for (i in seq(1, nx-1)){#range(0, nx - 1):
-    buoy[i] = ( abs(rho[i+1] - rho[i]) / (depth[i+1] - depth[i]) * g/rho_0 )
-  }
+  buoy[1:(nx-1)] = abs(rho[2:nx] - rho[1:(nx-1)]) / (depth[2:nx] - depth[1:(nx-1)]) * g/rho_0
+  # for (i in seq(1, nx-1)){#range(0, nx - 1):
+  #   buoy[i] = ( abs(rho[i+1] - rho[i]) / (depth[i+1] - depth[i]) * g/rho_0 )
+  # }
   buoy[nx] = ( abs(rho[nx-1] - rho[nx]) / abs(depth[nx-1] - depth[nx]) * 
                      g/rho_0 )
   
@@ -100,7 +101,7 @@ get_hypsography <- function(hypsofile, dx, nx){
                                                             length.out= nx))$y
   # area[which.min(area)] <- 1e-2
   area[nx] <- area[nx-1] -1
-  depth = depth= seq(1,nx*dx, length.out = nx)
+  depth = seq(1,nx*dx, length.out = nx)
   volume <- c(rev(diff(pracma::cumtrapz(area, depth))*(-1)),0)
   volume[which(volume == 0)] = min(volume[-which(volume == 0)])
   volume <- rep(0, (length(depth)-1))
@@ -157,6 +158,101 @@ composite.trapezoid <- function(f, a, b, n) {
   return(approx)
 }
 
+
+integrate_agg_fun <- function(dt, y, int_method){
+  N = length(dt)
+  if(int_method == "average"){
+    out = sum((y[1:(N-1)] + y[2:N])/2 * (dt[2:N] - dt[1:(N-1)])) / (max(dt) - min(dt))
+  }
+  if(int_method == "integral"){
+    out = sum((y[1:(N-1)] + y[2:N])/2 * (dt[2:N] - dt[1:(N-1)]))
+  }
+  return(out)
+}
+
+get_interp_drivers <- function(meteo_all, total_runtime, hydrodynamic_timestep, dt, method="interp", int_method="average"){
+  times = seq(1, 1 + total_runtime*hydrodynamic_timestep, dt)
+  if(method == "interp"){
+    meteo[1,] = approx(x = meteo_all[[1]]$dt, 
+                       y = meteo_all[[1]]$Shortwave_Radiation_Downwelling_wattPerMeterSquared, 
+                       xout = times,
+                       method = "linear", rule = 2)$y # 1 = Jsw
+    meteo[2,] = approx(x = meteo_all[[1]]$dt, 
+                       y = meteo_all[[1]]$Longwave_Radiation_Downwelling_wattPerMeterSquared, 
+                       xout = times,
+                       method = "linear", rule = 2)$y # 2 = Jlw
+    meteo[3,] = approx(x = meteo_all[[1]]$dt, 
+                       y = meteo_all[[1]]$Air_Temperature_celsius, 
+                       xout = times,
+                       method = "linear", rule = 2)$y # 3 = Tair
+    meteo[4,] = approx(x = meteo_all[[1]]$dt, 
+                       y = meteo_all[[1]]$ea, 
+                       xout = times,
+                       method = "linear", rule = 2)$y # 4 = ea
+    meteo[5,] = approx(x = meteo_all[[1]]$dt, 
+                       y = meteo_all[[1]]$Ten_Meter_Elevation_Wind_Speed_meterPerSecond, 
+                       xout = times,
+                       method = "linear", rule = 2)$y # 5 = Uw
+    meteo[6,] = approx(x = meteo_all[[1]]$dt, 
+                       y = meteo_all[[1]]$Cloud_Cover, 
+                       xout = times,
+                       method = "linear", rule = 2)$y # 6 = CC
+    meteo[7,] = approx(x = meteo_all[[1]]$dt, 
+                       y = meteo_all[[1]]$Surface_Level_Barometric_Pressure_pascal, 
+                       xout = times,
+                       method = "linear", rule = 2)$y # 7 = Pa
+    meteo[8,] = approx(x = meteo_all[[2]]$dt, 
+                       y = meteo_all[[2]]$kd, 
+                       xout = times,
+                       method = "linear", rule = 2)$y # 8 = kd
+    meteo[9,] = approx(x = meteo_all[[1]]$dt, 
+                       y = meteo_all[[1]]$Relative_Humidity_percent, 
+                       xout = times,
+                       method = "linear", rule = 2)$y # 9 = RH
+  }
+  if(method == "integrate"){
+    meteo_all[[1]]$dt = as.numeric(meteo_all[[1]]$dt)
+    # get times at exact dt intervals
+    x_dt = data.frame(dt = times) %>% left_join(meteo_all[[1]])
+    # duplicate above and add "add_to_group" so averages/integrals are calculated from endpoint to endpoint
+    x_dt_2 = bind_rows(x_dt %>% mutate(add_group = -1), x_dt %>% mutate(add_group = 0))
+    # get any measurements that weren't at dt intervals
+    measurements = meteo_all[[1]] %>% 
+      filter(!(dt %in% x_dt$dt))
+    # join and sort above
+    comb = full_join(x_dt_2, measurements %>% mutate(dt = as.numeric(dt))) %>% 
+      arrange(dt, add_group) %>% 
+      filter(dt <= max(times))
+    # linearly interpolate to present dt's so missing values are filled
+    cols_interp_met = c("Shortwave_Radiation_Downwelling_wattPerMeterSquared", "Longwave_Radiation_Downwelling_wattPerMeterSquared", "Air_Temperature_celsius", "ea", "Ten_Meter_Elevation_Wind_Speed_meterPerSecond", "Cloud_Cover", "Surface_Level_Barometric_Pressure_pascal", "Relative_Humidity_percent")
+    for(i in 1:length(cols_interp_met)){
+      comb[, cols_interp_met[i]] = approx(comb$dt, comb[, cols_interp_met[i]], comb$dt, method="linear", rule=2)$y
+    }
+    comb[, "kd"] = approx(meteo_all[[2]]$dt, meteo_all[[2]]$kd, comb$dt, method="linear", rule=2)$y
+    # add group column
+    dt_hold = dt
+    comb = comb %>% 
+      mutate(group = dt %/% dt_hold) %>% 
+      mutate(group = ifelse(!is.na(add_group), group + add_group, group)) %>% 
+      filter(group >=0 )
+    # aggregate to group
+    integral = comb %>% 
+      arrange(group, dt) %>% 
+      group_by(group) %>% 
+      summarise(across(all_of(c(cols_interp_met, "kd")), ~ integrate_agg_fun(dt, ., int_method)))
+    # format into matrix to be returned
+    cols_interp_ordered = c("Shortwave_Radiation_Downwelling_wattPerMeterSquared", "Longwave_Radiation_Downwelling_wattPerMeterSquared", "Air_Temperature_celsius", "ea", "Ten_Meter_Elevation_Wind_Speed_meterPerSecond", "Cloud_Cover", "Surface_Level_Barometric_Pressure_pascal", "kd", "Relative_Humidity_percent")
+    meteo = integral %>% 
+      select(cols_interp_ordered) %>% 
+      as.matrix() %>% 
+      t()
+  }
+  
+  rownames(meteo) = c("Jsw", "Jlw", "Tair", "ea", "Uw", "CC", "Pa", "kd", "RH")
+  
+  return(meteo)
+}
+
 run_thermalmodel <- function(u, startTime, endTime, 
                              ice = FALSE, 
                              Hi = 0, 
@@ -187,27 +283,17 @@ run_thermalmodel <- function(u, startTime, endTime,
                              dt, # 24 hours times 60 min/hour times 60 seconds/min
                              dx,
                              daily_meteo,
-                             secview,
+                             # secview,
                              pgdl_mode = 'off'){ # spatial step){
   
-  ## linearization of driver data, so model can have dynamic step
-  Jsw <- approxfun(x = daily_meteo$dt, y = daily_meteo$Shortwave_Radiation_Downwelling_wattPerMeterSquared, method = "linear", rule = 2)
-  Jlw <- approxfun(x = daily_meteo$dt, y = daily_meteo$Longwave_Radiation_Downwelling_wattPerMeterSquared, method = "linear", rule = 2)
-  Tair <- approxfun(x = daily_meteo$dt, y = daily_meteo$Air_Temperature_celsius, method = "linear", rule = 2)
-  ea <- approxfun(x = daily_meteo$dt, y = daily_meteo$ea, method = "linear", rule = 2)
-  Uw <- approxfun(x = daily_meteo$dt, y = daily_meteo$Ten_Meter_Elevation_Wind_Speed_meterPerSecond, method = "linear", rule = 2)
-  CC <- approxfun(x = daily_meteo$dt, y = daily_meteo$Cloud_Cover, method = "linear", rule = 2)
-  Pa <- approxfun(x = daily_meteo$dt, y = daily_meteo$Surface_Level_Barometric_Pressure_pascal, method = "linear", rule = 2)
-  kd <- approxfun(x = secview$dt, y = secview$kd, method = "linear", rule = 2)
-  RH <- approxfun(x = daily_meteo$dt, y = daily_meteo$Relative_Humidity_percent, method = "linear", rule = 2)
-  
-  um <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt), nrow = nx)
-  kzm <- matrix(NA, ncol = length( seq(startTime, endTime, dt)/dt), nrow = nx)
-  n2m <- matrix(NA, ncol = length( seq(startTime, endTime, dt)/dt), nrow = nx)
-  mix <- rep(NA, length = length( seq(startTime, endTime, dt)/dt))#(floor(endTime/dt - startTime/dt)))
-  therm.z <- rep(NA, length =length( seq(startTime, endTime, dt)/dt))
-  mix.z <- rep(NA, length = length( seq(startTime, endTime, dt)/dt))
-  Him <- rep(NA, length = length( seq(startTime, endTime, dt)/dt))
+  N_steps = hydrodynamic_timestep / dt
+  um <- matrix(NA, ncol =N_steps, nrow = nx)
+  kzm <- matrix(NA, ncol = N_steps, nrow = nx)
+  n2m <- matrix(NA, ncol = N_steps, nrow = nx)
+  mix <- rep(NA, length = N_steps)#(floor(endTime/dt - startTime/dt)))
+  therm.z <- rep(NA, length =N_steps)
+  mix.z <- rep(NA, length = N_steps)
+  Him <- rep(NA, length = N_steps)
   if (pgdl_mode == 'on'){
     um_diff <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
     um_mix <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
@@ -218,27 +304,32 @@ run_thermalmodel <- function(u, startTime, endTime,
     meteo_pgdl <- matrix(NA, ncol = length( seq(startTime, endTime, dt)/dt), nrow = 9)
   }
   
-  if (!is.null(kd_light)){
-    kd <- approxfun(x = seq(startTime, endTime, 1), y = rep(kd_light, length(seq(startTime, endTime, 1))), method = "linear", rule = 2)
-  } 
+  # if (!is.null(kd_light)){
+  #   kd <- approxfun(x = seq(startTime, endTime, 1), y = rep(kd_light, length(seq(startTime, endTime, 1))), method = "linear", rule = 2)
+  # } 
   
   start.time <- Sys.time()
   ## modeling code for vertical 1D mixing and heat transport
-  for (n in seq(startTime, endTime, dt)){#1:(floor(endTime/dt - startTime/dt))){  #iterate through time 1:floor(nt/dt)
+  for (n in 1:N_steps){#1:(floor(endTime/dt - startTime/dt))){  #iterate through time 1:floor(nt/dt)
+    if (!is.null(kd_light)){
+      kd = kd_light
+    }else{
+      kd = daily_meteo["kd",n]
+    }
     
     un = u # prior temperature values
     if (pgdl_mode == 'on'){
       dens_u_n2 = calc_dens(u) 
       n2 <- 9.81/mean(calc_dens(u)) * (lead(dens_u_n2) - dens_u_n2)/dx
-      n2_pgdl[, match(n, seq(startTime, endTime, dt))] <- n2
+      n2_pgdl[, n] <- n2
     }
     kz = eddy_diffusivity(calc_dens(un), depth, 9.81, 998.2, ice, area) / 86400
     
-    if (ice & Tair(n) <= 0){
+    if (ice & daily_meteo["Tair",n] <= 0){
       kzn = kz
       absorp = 1 - 0.7
       infra = 1 - absorp
-    } else if (ice & Tair(n) >= 0){
+    } else if (ice & daily_meteo["Tair",n] >= 0){
       kzn = kz
       absorp = 1 - 0.3
       infra = 1 - absorp
@@ -247,15 +338,15 @@ run_thermalmodel <- function(u, startTime, endTime,
       absorp = 1 - reflect# 0.3
       infra = 1 - absorp
     }
-    kzm[, match(n, seq(startTime, endTime, dt))] <- kzn
+    kzm[, n] <- kzn
     
     ## (1) Heat addition
     # surface heat flux
-    Q <- (absorp * Jsw(n) + 
-            longwave(cc = CC(n), sigma = sigma, Tair = Tair(n), ea = ea(n), emissivity = emissivity, Jlw = Jlw(n)) + #longwave(emissivity = emissivity, Jlw = Jlw(n)) +
+    Q <- (absorp * daily_meteo["Jsw",n] + 
+            longwave(cc = daily_meteo["CC",n], sigma = sigma, Tair = daily_meteo["Tair",n], ea = daily_meteo["ea",n], emissivity = emissivity, Jlw = daily_meteo["Jlw",n]) + 
             backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
-            latent(Tair = Tair(n), Twater = un[1], Uw = Uw(n), p2 = p2, pa = Pa(n), ea=ea(n), RH = RH(n)) + 
-            sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[1], Uw = Uw(n)))  
+            latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n], RH = daily_meteo["RH",n]) + 
+            sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n]))
 
     # integration through composite trapezoidal rule
     # dn = 1e5
@@ -279,8 +370,7 @@ run_thermalmodel <- function(u, startTime, endTime,
     #                     sensible(p2 = p2, B = B, Tair = Tair(b), Twater = un[1], Uw = Uw(b)))
     
     # heat addition over depth
-    H =  (1- infra) * (Jsw(n))  * #
-      exp(-(kd(n) ) *seq(dx,nx*dx,length.out=nx)) 
+    H =  (1- infra) * (daily_meteo["Jsw",n]) * exp(-(kd ) *depth) 
 
     # integration through composite trapezoidal rule
     # H <- (h / 2) * ((1- infra) * (Jsw(a))  * #
@@ -389,21 +479,21 @@ run_thermalmodel <- function(u, startTime, endTime,
     }
     
     if (pgdl_mode == 'on'){
-      um_diff[, match(n, seq(startTime, endTime, dt))] <- u
+      um_diff[, n] <- u
     }
     
     ## (3) TURBULENT MIXING OF MIXED LAYER
     # the mixed layer depth is determined for each time step by comparing kinetic 
     # energy available from wind and the potential energy required to completely 
     # mix the water column to a given depth
-    Zcv <- seq(1, nx) %*% area / sum(area) # center of volume
-    tau = 1.225 * Cd * Uw(n)^2 # wind shear is air density times wind velocity 
-    if (Uw(n) <= 15) {
-      c10 = 0.0005 * sqrt(Uw(n))
+    Zcv <- depth %*% area / sum(area) # center of volume
+    tau = 1.225 * Cd * daily_meteo["Uw",n]^2 # wind shear is air density times wind velocity 
+    if (daily_meteo["Uw",n] <= 15) {
+      c10 = 0.0005 * sqrt(daily_meteo["Uw",n])
     } else {
       c10 = 0.0026
     }
-    shear = sqrt((c10 * calc_dens(un[1]))/1.225) *  Uw(n) # shear velocity
+    shear = sqrt((c10 * calc_dens(un[1]))/1.225) *  daily_meteo["Uw",n] # shear velocity
     # coefficient times wind velocity squared
     KE = shear *  tau * dt # kinetic energy as function of wind
     
@@ -414,14 +504,14 @@ run_thermalmodel <- function(u, startTime, endTime,
     for (dep in 1:(nx-1)){
       if (dep == 1){
         # PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx)
-        PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  *
+        PE = abs(g *   depth[dep] *( depth[dep+1] - Zcv)  *
                    # abs(calc_dens(u[dep+1])- calc_dens(u[dep])))
                    abs(calc_dens(u[dep+1])- mean(calc_dens(u[1:dep]))))
       } else {
         PEprior = PE
         # PE = abs(g *  ( seq(1,nx)[dep] - Zcv)  * calc_dens(u[dep]) * dx +
         #            PEprior)
-        PE = abs(g *   seq(1,nx)[dep] *( seq(1,nx)[dep+1] - Zcv)  *
+        PE = abs(g *   depth[dep] *( depth[dep+1] - Zcv)  *
                    # abs(calc_dens(u[dep+1])- calc_dens(u[dep]))) + PEprior
                    abs(calc_dens(u[dep+1])- mean(calc_dens(u[1:dep])))) + PEprior
         
@@ -435,10 +525,10 @@ run_thermalmodel <- function(u, startTime, endTime,
       maxdep = dep
     }
     # u[1:maxdep] = (u[1:(maxdep)] %*% volume[1:(maxdep)])/sum(volume[1:(maxdep)]) #mean(u[1:maxdep])
-    mix[match(n, seq(startTime, endTime, dt))] <- KE/PE #append(mix, KE/PE)
-    therm.z[match(n, seq(startTime, endTime, dt))] <- maxdep #append(therm.z, maxdep)
+    mix[n] <- KE/PE #append(mix, KE/PE)
+    therm.z[n] <- maxdep #append(therm.z, maxdep)
     if (pgdl_mode == 'on'){
-      um_mix[, match(n, seq(startTime, endTime, dt))] <- u
+      um_mix[, n] <- u
     }
     
     ## (4) DENSITY INSTABILITIES
@@ -467,9 +557,9 @@ run_thermalmodel <- function(u, startTime, endTime,
     dens_u_n2 = calc_dens(u) 
     n2 <- 9.81/mean(calc_dens(u)) * (lead(dens_u_n2) - dens_u_n2)/dx
     max.n2 <- ifelse(max(n2, na.rm = T) > 1E-4, which.max(n2) * dx, dx * nx)
-    mix.z[match(n, seq(startTime, endTime, dt))] <- max.n2
+    mix.z[n] <- max.n2
     if (pgdl_mode == 'on'){
-      um_conv[, match(n, seq(startTime, endTime, dt))] <- u
+      um_conv[, n] <- u
     }
     
     
@@ -493,14 +583,14 @@ run_thermalmodel <- function(u, startTime, endTime,
       if (ice != TRUE) {
         Hi <- Ice_min+(initEnergy/(910*333500))/max(area)
       } else {
-        if (Tair(n) > 0){
+        if (daily_meteo["Tair",n] > 0){
           Tice <- 0
-          Hi = Hi -max(c(0, meltP * dt*((absorp*Jsw(n))+(longwave(cc = CC(n), sigma = sigma, Tair = Tair(n), ea = ea(n), emissivity = emissivity, Jlw = Jlw(n)) +
-                                                           backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
-                                                           latent(Tair = Tair(n), Twater = un[1], Uw = Uw(n ), p2 = p2, pa = Pa(n), ea=ea(n),  RH = RH(n)) + 
-                                                           sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[1], Uw = Uw(n))) )/(1000*333500)))
+          Hi = Hi -max(c(0, meltP * dt*((absorp*daily_meteo["Jsw",n])+(longwave(cc = daily_meteo["CC",n], sigma = sigma, Tair = daily_meteo["Tair",n], ea = daily_meteo["ea",n], emissivity = emissivity, Jlw = daily_meteo["Jlw",n]) +
+                                                                     backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
+                                                                     latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n],  RH = daily_meteo["RH",n]) + 
+                                                                     sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n])) )/(1000*333500)))
         } else {
-          Tice <-  ((1/(10 * Hi)) * 0 +  Tair(n)) / (1 + (1/(10 * Hi))) 
+          Tice <-  ((1/(10 * Hi)) * 0 + daily_meteo["Tair",n]) / (1 + (1/(10 * Hi))) 
           Hi <- min(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
         }
       }
@@ -509,40 +599,40 @@ run_thermalmodel <- function(u, startTime, endTime,
         u[supercooled] = 0
         u[1] = 0
       }
-      Him[ match(n, seq(startTime, endTime, dt))] <- Hi
+      Him[ n] <- Hi
     } else if (ice == TRUE & Hi >= Ice_min) {
-      if (Tair(n) > 0){
+      if (daily_meteo["Tair",n] > 0){
         Tice <- 0
-        Hi = Hi -max(c(0, meltP * dt*((absorp*Jsw(n))+(backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
-                                                         latent(Tair = Tair(n), Twater = un[1], Uw = Uw(n ), p2 = p2, pa = Pa(n), ea=ea(n),  RH = RH(n)) + 
-                                                         sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[1], Uw = Uw(n))) )/(1000*333500))) 
+        Hi = Hi -max(c(0, meltP * dt*((absorp*daily_meteo["Jsw",n])+(backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
+                                                                   latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n],  RH = daily_meteo["RH",n]) + 
+                                                                   sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n])) )/(1000*333500))) 
       } else {
-        Tice <-  ((1/(10 * Hi)) * 0 +  Tair(n)) / (1 + (1/(10 * Hi))) 
+        Tice <-  ((1/(10 * Hi)) * 0 +  daily_meteo["Tair",n]) / (1 + (1/(10 * Hi))) 
         Hi <- min(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
       }
       u[supercooled] = 0
       u[1] = 0
-      Him[ match(n, seq(startTime, endTime, dt))] <- Hi
+      Him[ n] <- Hi
     } else if (ice == TRUE & Hi < Ice_min){
       ice = FALSE 
     }
     
-    n2m[, match(n, seq(startTime, endTime, dt))] <- n2
-    um[, match(n, seq(startTime, endTime, dt))] <- u
+    n2m[, n] <- n2
+    um[, n] <- u
     if (pgdl_mode == 'on'){
-      um_ice[, match(n, seq(startTime, endTime, dt))] <- u
+      um_ice[, n] <- u
       
-      meteo_pgdl[1, match(n, seq(startTime, endTime, dt))] <-  Tair(n)
-      meteo_pgdl[2, match(n, seq(startTime, endTime, dt))] <-   longwave(cc = CC(n), sigma = sigma, Tair = Tair(n), ea = ea(n), emissivity = emissivity, Jlw = Jlw(n)) -
+      meteo_pgdl[1, n] <-  daily_meteo["Tair",n]
+      meteo_pgdl[2, n] <-   longwave(cc = daily_meteo["CC",n], sigma = sigma, Tair = daily_meteo["Tair",n], ea = daily_meteo["ea",n], emissivity = emissivity, Jlw = daily_meteo["Jlw",n]) -
         backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps)
-      meteo_pgdl[3, match(n, seq(startTime, endTime, dt))] <-   latent(Tair = Tair(n), Twater = un[1], Uw = Uw(n), p2 = p2, pa = Pa(n), ea=ea(n), RH = RH(n))
-      meteo_pgdl[4, match(n, seq(startTime, endTime, dt))] <-   sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[1], Uw = Uw(n))
-      meteo_pgdl[5, match(n, seq(startTime, endTime, dt))] <-   Jsw(n)
-      meteo_pgdl[6, match(n, seq(startTime, endTime, dt))] <-   kd(n)
-      meteo_pgdl[7, match(n, seq(startTime, endTime, dt))] <-   shear
-      meteo_pgdl[8, match(n, seq(startTime, endTime, dt))] <-   tau
-      meteo_pgdl[9, match(n, seq(startTime, endTime, dt))] <-   max(area, na.rm = T)
-
+      meteo_pgdl[3, n] <-   latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n], RH = daily_meteo["RH",n])
+      meteo_pgdl[4, n] <-   sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n])
+      meteo_pgdl[5, n] <-   daily_meteo["Jsw",n]
+      meteo_pgdl[6, n] <-   kd
+      meteo_pgdl[7, n] <-   shear
+      meteo_pgdl[8, n] <-   tau
+      meteo_pgdl[9, n] <-   max(area, na.rm = T)
+      
     }
     
 
@@ -588,7 +678,7 @@ run_thermalmodel <- function(u, startTime, endTime,
   
   stratFlag = rep(NA, length = ncol(um))
   for (v in 1:length(stratFlag)){
-    stratFlag[v] = ifelse((calc_dens(um[nrow(um),v]) - calc_dens(um[1,v])) >= 0.1 &
+    stratFlag[v] = ifelse((calc_dens(um[nx,v]) - calc_dens(um[1,v])) >= 0.1 &
     mean(um[,v]) >= 4, 1, 0)
   }
   
