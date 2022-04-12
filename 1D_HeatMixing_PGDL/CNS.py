@@ -7,13 +7,15 @@ Created on Mon Apr 11 20:26:13 2022
 
 import numpy as np
 
+# INPUT DATA FROM PREVIOUS MODULE
 t = np.arange(25, 5, -1) # temperature profile from previous module output
 dt = 3600 # model time step - fixed
 dx = 1 # model space step - fixed
 
+# OUTPUT FROM MLP
 d = np.array([1e-5] * len(t)) # estimated diffusivity values
 
-# implementation of Crank-Nicholson scheme
+# IMPLEMENTATION OF CRANK-NICHOLSON SCHEME
 j = len(t)
 y = np.zeros((len(t), len(t)))
 
@@ -43,5 +45,5 @@ mn[len(mn)-1] = t[len(t)-1]
 for k in range(1,j-1):
     mn[k] = alpha[k] * t[k-1] + 2 * (1 - alpha[k]) * t[k] + alpha[k] * t[k]
 
-# create temperature output 
+# DERIVED TEMPERATURE OUTPUT FOR NEXT MODULE
 output = np.linalg.solve(y, mn)
