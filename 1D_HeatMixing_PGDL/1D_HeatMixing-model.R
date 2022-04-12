@@ -19,7 +19,7 @@ source('1D_HeatMixing_functions.R')
 ## lake configurations
 zmax = 25 # maximum lake depth
 nx = 25 # number of layers we will have
-dt = 3600 * 1 # 24 hours times 60 min/hour times 60 seconds/min
+dt = 3600  # 24 hours times 60 min/hour times 60 seconds/min
 dx = zmax/nx # spatial step
 
 ## area and depth values of our lake 

@@ -429,9 +429,9 @@ run_thermalmodel <- function(u, startTime, endTime,
       # all other layers in between
       # Linearized heat conservation equation matrix (diffusion only)
       alpha = (dt/dx**2) * kzn    
-      az <- rep(-alpha,j-1  )                                #coefficient for i-1
-      bz <- rep(2 * (1 + alpha),j)                                                      #coefficient for i
-      cz <- rep(-alpha,j-1  )                #coefficient for i+1
+      az <- -alpha #rep(-alpha,j-1  )                                #coefficient for i-1
+      bz <- 2 * (1 + alpha) #rep(2 * (1 + alpha),j)                                                      #coefficient for i
+      cz <- -alpha #rep(-alpha,j-1  )                #coefficient for i+1
       #Boundary conditions, surface
       az[1] <- 0
       #cz(1) remains unchanged
