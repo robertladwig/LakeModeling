@@ -451,7 +451,7 @@ run_thermalmodel <- function(u, startTime, endTime,
       mn[1] = u[1]
       mn[j] = u[j]
       for (g in 2:(j-1)){
-        mn[g] = alpha * u[g-1] + 2 * (1-alpha)*u[g] + alpha * u[g+1]
+        mn[g] = alpha[g] * u[g-1] + 2 * (1-alpha[g])*u[g] + alpha[g] * u[g+1]
       }
 
       u  <- solve(y, mn)
