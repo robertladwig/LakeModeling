@@ -108,7 +108,8 @@ get_hypsography <- function(hypsofile, dx, nx){
   for (p in 1:length(volume)){
     volume[p] <- pracma::trapz(depth[p:(p+1)],area[p:(p+1)])
   }
-  volume <- c(volume, 1000)
+  # volume <- c(volume, 1000)
+  volume <- c(volume, volume[length(volume)])
   return(list(area, depth, volume))
 }
 
@@ -476,7 +477,7 @@ run_thermalmodel <- function(u, startTime, endTime,
       # all other layers in between
       for (i in 2:nx){
         do[i] = don[i] +
-          (-1e-5 * (area[i]/volume[i])/86400)* dt
+          (-1 * (area[i]/volume[i])/86400)* dt
       }
       
       ## (2b) Diffusion by Crank-Nicholson Scheme (CNS)

@@ -79,7 +79,7 @@ meteo = get_interp_drivers(meteo_all=meteo_all, total_runtime=total_runtime,
 
 peri_kd <- rep(0, length( hyps_all[[2]]))
 peri_kd[length(peri_kd)] = 1
-km = 0.2 * peri_kd
+km = 2.0 * peri_kd
 
 do_ini = rep(10, length(u_ini))
 
@@ -159,7 +159,7 @@ for (i in 2:nx){
 }
 
 plot(seq(1, ncol(dissoxygen))*dt/24/3600, dissoxygen[1,], col = 'red', type = 'l', 
-     xlab = 'Time (d)', ylab='Diss. Oxygen (g/m3)', ylim=c(3,10), lwd = 2)
+     xlab = 'Time (d)', ylab='Diss. Oxygen (g/m3)', ylim=c(0,10), lwd = 2)
 for (i in 2:nx){
   lines(seq(1, ncol(dissoxygen))*dt/24/3600, dissoxygen[i,], 
         lty = 'dashed',lwd =2)
@@ -242,7 +242,7 @@ for (i in seq(1,ncol(temp), length.out = 50)){
     xlab('temp. (deg C)') + ylab('depth (m)')+
     scale_y_reverse() +
     scale_color_manual(values = c("#56B4E9", "lightblue", "red")) +
-    scale_x_continuous(sec.axis = sec_axis(~ . /2, name = "diss. oxygen (g/m3)"), limits = c(3,30)) +
+    scale_x_continuous(sec.axis = sec_axis(~ . /2, name = "diss. oxygen (g/m3)"), limits = c(0,30)) +
     ggtitle( time[i]) + 
     labs(col='') +
     # xlim(3, 30) +
