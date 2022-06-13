@@ -55,8 +55,8 @@ temp_ice <- matrix(NA, ncol = (total_runtime * hydrodynamic_timestep/ dt) ,
                     nrow = nx)
 diff <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                nrow = nx)
-# meteo <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
-#                nrow = 9)
+meteo_output <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+               nrow = 9)
 buoyancy <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                nrow = nx)
 
@@ -121,7 +121,7 @@ for (i in 1:total_runtime){
   temp_conv[, matrix_range_start:matrix_range_end] =  res$temp_conv
   temp_ice[, matrix_range_start:matrix_range_end] =  res$temp_ice
   buoyancy[, matrix_range_start:matrix_range_end] =  res$temp
-  # meteo[, matrix_range_start:matrix_range_end] =  res$meteo_input
+  meteo_output[, matrix_range_start:matrix_range_end] =  res$meteo_input
   buoyancy[, matrix_range_start:matrix_range_end] = res$buoyancy_pgdl
   
   average <- res$average %>%
@@ -215,7 +215,7 @@ df <- df %>%
   filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
 write.csv(df, file = 'output/buoyancy.csv', row.names = F)
 
-df <- data.frame(cbind(time, t(meteo)) )
+df <- data.frame(cbind(time, t(meteo_output)) )
 colnames(df) <- c("time", "AirTemp_degC", "Longwave_Wm-2",
                   "Latent_Wm-2", "Sensible_Wm-2", "Shortwave_Wm-2",
                   "lightExtinct_m-1","ShearVelocity_mS-1", "ShearStress_Nm-2",
