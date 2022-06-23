@@ -38,7 +38,7 @@ u_ini <- initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
 
 ### EXAMPLE RUNS
 hydrodynamic_timestep = 24 * 3600 #24/4 * dt
-total_runtime <- 365
+total_runtime <- 365 * 3
 startingDate <- meteo_all[[1]]$datetime[1]
 
 temp <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
@@ -176,43 +176,57 @@ ggplot(m.df, aes((time), as.numeric(variable))) +
 df <- data.frame(cbind(time, t(temp)) )
 colnames(df) <- c("time", as.character(paste0('tempDegC_total04_',seq(1,nrow(temp)))))
 df$time <- time
+# df <- df %>%
+#   filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
 df <- df %>%
-  filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
+  mutate(doy = lubridate::yday(time)) %>%
+  filter(between(doy,   lubridate::yday('2009-06-04 09:00:00'),  lubridate::yday('2009-08-01 00:00:00'))) %>%
+  select(-'doy')
 write.csv(df, file = 'output/temp_total04.csv', row.names = F)
 
 df <- data.frame(cbind(time, t(temp_diff)) )
 colnames(df) <- c("time", as.character(paste0('tempDegC_diff01_',seq(1,nrow(temp)))))
 df$time <- time
 df <- df %>%
-  filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
+  mutate(doy = lubridate::yday(time)) %>%
+  filter(between(doy,   lubridate::yday('2009-06-04 09:00:00'),  lubridate::yday('2009-08-01 00:00:00'))) %>%
+  select(-'doy')
 write.csv(df, file = 'output/temp_diff01.csv', row.names = F)
 
 df <- data.frame(cbind(time, t(temp_mix)) )
 colnames(df) <- c("time", as.character(paste0('tempDegC_mix02_',seq(1,nrow(temp)))))
 df$time <- time
 df <- df %>%
-  filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
+  mutate(doy = lubridate::yday(time)) %>%
+  filter(between(doy,   lubridate::yday('2009-06-04 09:00:00'),  lubridate::yday('2009-08-01 00:00:00'))) %>%
+  select(-'doy')
 write.csv(df, file = 'output/temp_mix02.csv', row.names = F)
 
 df <- data.frame(cbind(time, t(temp_conv)) )
 colnames(df) <- c("time", as.character(paste0('tempDegC_conv03_',seq(1,nrow(temp)))))
 df$time <- time
 df <- df %>%
-  filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
+  mutate(doy = lubridate::yday(time)) %>%
+  filter(between(doy,   lubridate::yday('2009-06-04 09:00:00'),  lubridate::yday('2009-08-01 00:00:00'))) %>%
+  select(-'doy')
 write.csv(df, file = 'output/temp_conv03.csv', row.names = F)
 
 df <- data.frame(cbind(time, t(diff)) )
 colnames(df) <- c("time", as.character(paste0('diffM2s-1_',seq(1,nrow(temp)))))
 df$time <- time
 df <- df %>%
-  filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
+  mutate(doy = lubridate::yday(time)) %>%
+  filter(between(doy,   lubridate::yday('2009-06-04 09:00:00'),  lubridate::yday('2009-08-01 00:00:00'))) %>%
+  select(-'doy')
 write.csv(df, file = 'output/diff.csv', row.names = F)
 
 df <- data.frame(cbind(time, t(buoyancy)) )
 colnames(df) <- c("time", as.character(paste0('n2S-2_',seq(1,nrow(temp)))))
 df$time <- time
 df <- df %>%
-  filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
+  mutate(doy = lubridate::yday(time)) %>%
+  filter(between(doy,   lubridate::yday('2009-06-04 09:00:00'),  lubridate::yday('2009-08-01 00:00:00'))) %>%
+  select(-'doy')
 write.csv(df, file = 'output/buoyancy.csv', row.names = F)
 
 df <- data.frame(cbind(time, t(meteo_output)) )
@@ -222,7 +236,9 @@ colnames(df) <- c("time", "AirTemp_degC", "Longwave_Wm-2",
                   "Area_m2")
 df$time <- time
 df <- df %>%
-  filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
+  mutate(doy = lubridate::yday(time)) %>%
+  filter(between(doy,   lubridate::yday('2009-06-04 09:00:00'),  lubridate::yday('2009-08-01 00:00:00'))) %>%
+  select(-'doy')
 write.csv(df, file = 'output/meteorology_input.csv', row.names = F)
 
 
@@ -307,7 +323,9 @@ df <- data.frame(cbind(time, t(temp)) )
 colnames(df) <- c("time", as.character(paste0('tempDegC_total04_',seq(1,nrow(temp)))))
 df$time <- time
 df <- df %>%
-  filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
+  mutate(year = lubridate::year(time), doy = lubridate::yday(time)) %>%
+  filter(between(doy,   lubridate::yday('2009-06-04 09:00:00'),  lubridate::yday('2009-08-01 00:00:00'))) %>%
+  select(-c('doy', 'year'))
 
 dat0 = wide.obs[,-1]
 dat0[dat0 < 5] = NA
@@ -324,7 +342,10 @@ dat.df <- data.frame(cbind(df$time, dat5))
 colnames(dat.df) <- c("time", as.character(paste0('tempDegC_total04_',seq(1,nrow(temp)))))
 dat.df$time <- df$time
 dat.df <- dat.df %>%
-  filter(time >=  '2009-06-04 09:00:00' & time <= '2009-09-01 00:00:00')
+  mutate(doy = lubridate::yday(time)) %>%
+  filter(between(doy,   lubridate::yday('2009-06-04 09:00:00'),  lubridate::yday('2009-08-01 00:00:00'))) %>%
+  select(-'doy')
+
 
 m.dat.df <- reshape2::melt(dat.df, "time")
 m.dat.df$time <- df$time

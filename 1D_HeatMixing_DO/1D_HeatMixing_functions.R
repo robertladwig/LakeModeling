@@ -63,7 +63,7 @@ provide_meteorology <- function(meteofile, secchifile,
   # Package ID: knb-lter-ntl.31.30 Cataloging System:https://pasta.edirepository.org.
   # Data set title: North Temperate Lakes LTER: Secchi Disk Depth; Other Auxiliary Base Crew Sample Data 1981 - current.
   secview <- read_csv(secchifile) %>%
-    filter(sampledate >= startDate)
+    dplyr::filter(sampledate >= startDate)
   if (secview$sampledate[1] >= startDate){
     secview <- rbind(data.frame('sampledate' = startDate,
                                 'secnview' = secview$secnview[1]),
@@ -219,11 +219,11 @@ get_interp_drivers <- function(meteo_all, total_runtime, hydrodynamic_timestep, 
     x_dt_2 = bind_rows(x_dt %>% mutate(add_group = -1), x_dt %>% mutate(add_group = 0))
     # get any measurements that weren't at dt intervals
     measurements = meteo_all[[1]] %>% 
-      filter(!(dt %in% x_dt$dt))
+      dplyr::filter(!(dt %in% x_dt$dt))
     # join and sort above
     comb = full_join(x_dt_2, measurements %>% mutate(dt = as.numeric(dt))) %>% 
       arrange(dt, add_group) %>% 
-      filter(dt <= max(times))
+      dplyr::filter(dt <= max(times))
     # linearly interpolate to present dt's so missing values are filled
     cols_interp_met = c("Shortwave_Radiation_Downwelling_wattPerMeterSquared", "Longwave_Radiation_Downwelling_wattPerMeterSquared", "Air_Temperature_celsius", "ea", "Ten_Meter_Elevation_Wind_Speed_meterPerSecond", "Cloud_Cover", "Surface_Level_Barometric_Pressure_pascal", "Relative_Humidity_percent")
     for(i in 1:length(cols_interp_met)){
@@ -235,7 +235,7 @@ get_interp_drivers <- function(meteo_all, total_runtime, hydrodynamic_timestep, 
     comb = comb %>% 
       mutate(group = dt %/% dt_hold) %>% 
       mutate(group = ifelse(!is.na(add_group), group + add_group, group)) %>% 
-      filter(group >=0 )
+      dplyr::filter(group >=0 )
     # aggregate to group
     integral = comb %>% 
       arrange(group, dt) %>% 
@@ -287,7 +287,12 @@ run_thermalmodel <- function(u, startTime, endTime,
                              # secview,
                              pgdl_mode = 'off',
                              km = 0.2,
-                             do){ # spatial step){
+                             do,
+                             Fvol,
+                             Fred,
+                             Do2,
+                             delta_DBL,
+                             eff_area){ # spatial step){
   
   N_steps = hydrodynamic_timestep / dt
   um <- matrix(NA, ncol =N_steps, nrow = nx)
@@ -469,16 +474,30 @@ run_thermalmodel <- function(u, startTime, endTime,
                                                                  lake.area = max(area)),
                                temperature = u[1], gas = "O2")/86400
       o2sat = o2.at.sat.base(temp = u[1], altitude = 4800)
-
+      
+      if (ice){
+        k600 = 1e-4/86400
+      }
       # surface layer
       do[1] = don[1] +
         (k600 * (o2sat - don[1])) * dt/dx
       
+      bbl_area = area * eff_area
+      
       # all other layers in between
-      for (i in 2:nx){
+      for (i in 2:(nx-1)){
         do[i] = don[i] +
-          (-1 * (area[i]/volume[i])/86400)* dt
+          (Fvol/86400) * dt +
+          (- bbl_area[i] * Fred/86400 - bbl_area[i] * (Do2)/delta_DBL * don[nx]) * dt/volume[nx]
       }
+      
+      Do2 = exp((-4.410 + (773.8)/(u[nx] + 273.15) - ((506.4)/(u[nx] + 273.15))^2)/1e4)
+      
+      do[nx] = don[nx] +
+        (- bbl_area[i] * Fred/86400 - bbl_area[i] * (Do2)/delta_DBL * don[nx]) * dt/volume[nx]
+      
+      do[which(do < 0)] = 0
+      do[which(do > (14.7 - 0.0017 * 4800) * exp(-0.0225*u))] = (14.7 - 0.0017 * 4800) * exp(-0.0225*u)
       
       ## (2b) Diffusion by Crank-Nicholson Scheme (CNS)
       j <- length(don)

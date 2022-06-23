@@ -19,13 +19,15 @@ source('1D_HeatMixing_functions.R')
 
 ## lake configurations
 zmax = 3 # maximum lake depth
-nx = 10 # number of layers we will have
+nx = 15 # number of layers we will have
 dt = 3600  # 24 hours times 60 min/hour times 60 seconds/min
 dx = zmax/nx # spatial step
 
 ## area and depth values of our lake 
 hyps_all <- get_hypsography(hypsofile = 'bc/LakeEnsemblR_bathymetry_standard.csv',
                             dx = dx, nx = nx)
+hyps_all[[1]][15] = hyps_all[[1]][15] /1e2
+hyps_all[[3]][15] = hyps_all[[1]][15] * dx
 
 ## atmospheric boundary conditions
 meteo_data <- provide_meteorology(meteofile = 'bc/LakeEnsemblR_meteo_standard.csv',
@@ -34,8 +36,10 @@ meteo_data <- provide_meteorology(meteofile = 'bc/LakeEnsemblR_meteo_standard.cs
 
 meteo_all = list()
 
+t1 <- as.POSIXct('2009-01-01 00:00:00')
+t2 <- as.POSIXct('2010-09-07 23:30:00')
 meteo_all[[1]] = meteo_data[[1]] %>%
-  dplyr::filter(datetime >= '2009-07-01 00:00:00' & datetime <= '2009-07-07 23:30:00')
+  dplyr::filter(datetime >= t1 & datetime <= t2)
 
 meteo_all[[1]]$dt <- as.POSIXct(meteo_all[[1]]$datetime) - (as.POSIXct(meteo_all[[1]]$datetime)[1]) + 1
 meteo_all[[1]]$Surface_Level_Barometric_Pressure_pascal = meteo_all[[1]]$Surface_Level_Barometric_Pressure_pascal + 3000
@@ -49,7 +53,7 @@ meteo_all[[2]] = meteo_data[[2]]
 
 ### EXAMPLE RUNS
 hydrodynamic_timestep = 24 * 3600 #24/4 * dt
-total_runtime <- 7
+total_runtime <- as.numeric(floor(t2-t1))
 startingDate <- meteo_all[[1]]$datetime[1]
 
 temp <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
@@ -79,9 +83,9 @@ meteo = get_interp_drivers(meteo_all=meteo_all, total_runtime=total_runtime,
 
 peri_kd <- rep(0, length( hyps_all[[2]]))
 peri_kd[length(peri_kd)] = 1
-km = 2.0 * peri_kd
+km = 0 * peri_kd
 
-do_ini = rep(10, length(u_ini))
+do_ini = (14.7 - 0.0017 * 4800) * exp(-0.0225*u_ini)
 
 if (exists('res')) {remove('res')}
 
@@ -134,7 +138,12 @@ for (i in 1:total_runtime){
                             pgdl_mode = 'off',
                            scheme = 'implicit',
                            km = km,
-                           do = do)
+                           do = do,
+                           Fvol = 1,#0.01
+                           Fred = 0.005,##0.36,
+                           Do2 = 1.08 * 10^(-4),
+                           delta_DBL = 0.1/1000,
+                           eff_area = 1e-6)
 
   temp[, matrix_range_start:matrix_range_end] =  res$temp
   diff[, matrix_range_start:matrix_range_end] =  res$diff
@@ -152,7 +161,7 @@ for (i in 1:total_runtime){
 
 # plotting for checking model output and performance
 plot(seq(1, ncol(temp))*dt/24/3600, temp[1,], col = 'red', type = 'l', 
-     xlab = 'Time (d)', ylab='Temperature (degC)', ylim=c(17,30), lwd = 2)
+     xlab = 'Time (d)', ylab='Temperature (degC)', ylim=c(0,30), lwd = 2)
 for (i in 2:nx){
   lines(seq(1, ncol(temp))*dt/24/3600, temp[i,], 
         lty = 'dashed',lwd =2)
@@ -196,40 +205,42 @@ colnames(df) <- c("time", as.character(paste0(seq(1,nrow(temp)))))
 m.df <- reshape2::melt(df, "time")
 m.df$time <- time
 
-ggplot(m.df, aes((time), as.numeric(variable)*dx)) +
+g1 <- ggplot(m.df, aes((time), as.numeric(variable)*dx)) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
   scale_fill_gradientn(limits = c(-2,35),
                        colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
   theme_minimal()  +xlab('Time') +
   ylab('Depth') +
   labs(fill = 'Temp [degC]')+
-  scale_y_reverse() 
+  scale_y_reverse() ; g1
 
 df.do <- data.frame(cbind(time, t(dissoxygen)) )
 colnames(df.do) <- c("time", as.character(paste0(seq(1,nrow(dissoxygen)))))
 m.df.do <- reshape2::melt(df.do, "time")
 m.df.do$time <- time
 
-ggplot(m.df.do, aes((time), as.numeric(variable)*dx)) +
+g2 <- ggplot(m.df.do, aes((time), as.numeric(variable)*dx)) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
-  scale_fill_gradientn(limits = c(0,10),
+  scale_fill_gradientn(limits = c(0,15),
                        colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
   theme_minimal()  +xlab('Time') +
   ylab('Depth') +
   labs(fill = 'Oxygen [g/m3]')+
-  scale_y_reverse() 
+  scale_y_reverse() ;g2
+
+g1 / g2
 
 
 ## vertical temperature profiles
-for (i in seq(1,ncol(temp), length.out = 50)){
+for (i in seq(1,ncol(temp), length.out = 300)){
   n = i
   i = floor(i)
   
   sim = m.df %>% 
-    filter(time == time[i]) %>%
+    dplyr::filter(time == time[i]) %>%
     mutate(dosat = (14.7 - 0.0017 * 4800) * exp(-0.0225*value))
   sim.do = m.df.do %>% 
-    filter(time == time[i]) 
+    dplyr::filter(time == time[i]) 
 
   ggplot() +
     geom_path(data = sim, aes(value, 
@@ -242,14 +253,14 @@ for (i in seq(1,ncol(temp), length.out = 50)){
     xlab('temp. (deg C)') + ylab('depth (m)')+
     scale_y_reverse() +
     scale_color_manual(values = c("#56B4E9", "lightblue", "red")) +
-    scale_x_continuous(sec.axis = sec_axis(~ . /2, name = "diss. oxygen (g/m3)"), limits = c(0,30)) +
+    scale_x_continuous(sec.axis = sec_axis(~ . /2, name = "diss. oxygen (g/m3)"), limits = c(-2,30)) +
     ggtitle( time[i]) + 
     labs(col='') +
     # xlim(3, 30) +
     theme_bw() +
     theme(legend.position = 'bottom')
   
-  ggsave(paste0('animation/pic_',match(n, seq(1,ncol(temp), length.out = 50)),'.png'),
+  ggsave(paste0('animation/pic_',match(n, seq(1,ncol(temp), length.out = 300)),'.png'),
          width = 4, height = 5, units = 'in')
   
 }

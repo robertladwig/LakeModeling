@@ -25,7 +25,7 @@ observed <- observed %>%
 
 input <- as.matrix(cbind(input_df[2:nrow(input_df),], output_df[1:(nrow(output_df)-1),]))
 target <- as.matrix(output_df[2:nrow(output_df),])
-target <- as.matrix(obsrved[2:nrow(observed),])
+target <- as.matrix(observed[2:nrow(observed),])
 
 # network <- keras_model_sequential() %>%
 #   layer_dense(units = 15, activation = "sigmoid", input_shape = c(34)) %>%
