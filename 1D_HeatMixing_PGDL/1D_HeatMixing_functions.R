@@ -295,6 +295,7 @@ run_thermalmodel <- function(u, startTime, endTime,
   mix.z <- rep(NA, length = N_steps)
   Him <- rep(NA, length = N_steps)
   if (pgdl_mode == 'on'){
+    um_heat <-  matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
     um_diff <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
     um_mix <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
     um_conv <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
@@ -416,6 +417,10 @@ run_thermalmodel <- function(u, startTime, endTime,
       u[nx] = un[nx] +
       (abs(H[nx]-H[nx-1]) * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx])) +
       Hg[nx]/area[nx]) * dt
+      
+      if (pgdl_mode == 'on'){
+        um_heat[, n] <- u
+      }
       
       # integration through composite trapezoidal ruled
       # u[nx] = un[nx] +
@@ -715,6 +720,7 @@ run_thermalmodel <- function(u, startTime, endTime,
                'thermoclinedepth' = therm.z,
                'endtime' = endTime,
                'average' = df.avg.sim,
+               'temp_heat' = um_heat,
                'temp_diff' = um_diff,
                'temp_mix' = um_mix,
                'temp_conv' = um_conv,

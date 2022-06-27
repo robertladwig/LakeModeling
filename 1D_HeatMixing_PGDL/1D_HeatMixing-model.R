@@ -38,13 +38,15 @@ u_ini <- initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
 
 ### EXAMPLE RUNS
 hydrodynamic_timestep = 24 * 3600 #24/4 * dt
-total_runtime <- 365 * 3
+total_runtime <- 365 * 1
 startingDate <- meteo_all[[1]]$datetime[1]
 
 temp <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
               nrow = nx)
 avgtemp <- matrix(NA, ncol = 6,
                 nrow = total_runtime * hydrodynamic_timestep/ dt)
+temp_heat <- matrix(NA, ncol = (total_runtime * hydrodynamic_timestep/ dt) ,
+                    nrow = nx)
 temp_diff <- matrix(NA, ncol = (total_runtime * hydrodynamic_timestep/ dt) ,
                nrow = nx)
 temp_mix <- matrix(NA, ncol = (total_runtime * hydrodynamic_timestep/ dt) ,
@@ -116,6 +118,7 @@ for (i in 1:total_runtime){
   temp[, matrix_range_start:matrix_range_end] =  res$temp
   diff[, matrix_range_start:matrix_range_end] =  res$diff
   avgtemp[matrix_range_start:matrix_range_end,] <- as.matrix(res$average)
+  temp_heat[, matrix_range_start:matrix_range_end] =  res$temp_heat
   temp_diff[, matrix_range_start:matrix_range_end] =  res$temp_diff
   temp_mix[, matrix_range_start:matrix_range_end] =  res$temp_mix
   temp_conv[, matrix_range_start:matrix_range_end] =  res$temp_conv
@@ -183,6 +186,16 @@ df <- df %>%
   filter(between(doy,   lubridate::yday('2009-06-04 09:00:00'),  lubridate::yday('2009-08-01 00:00:00'))) %>%
   select(-'doy')
 write.csv(df, file = 'output/temp_total04.csv', row.names = F)
+
+
+df <- data.frame(cbind(time, t(temp_heat)) )
+colnames(df) <- c("time", as.character(paste0('tempDegC_heat00_',seq(1,nrow(temp)))))
+df$time <- time
+df <- df %>%
+  mutate(doy = lubridate::yday(time)) %>%
+  filter(between(doy,   lubridate::yday('2009-06-04 09:00:00'),  lubridate::yday('2009-08-01 00:00:00'))) %>%
+  select(-'doy')
+write.csv(df, file = 'output/temp_heat00.csv', row.names = F)
 
 df <- data.frame(cbind(time, t(temp_diff)) )
 colnames(df) <- c("time", as.character(paste0('tempDegC_diff01_',seq(1,nrow(temp)))))
