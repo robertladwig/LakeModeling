@@ -26,4 +26,4 @@ Click [here](https://github.com/robertladwig/LakeModeling/blob/main/Manual/1D_In
 - (ON-GOING!) experimental: individual-based modeling of phytoplankton
 - 2D advective-diffusive heat transport
 
-![](1D_HeatMixing/heatmap.png)<!-- -->
+![](Figs/heatmaps_implicit_1.png)<!-- -->
