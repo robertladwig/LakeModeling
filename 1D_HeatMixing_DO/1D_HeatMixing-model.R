@@ -276,7 +276,7 @@ m.df.do$time <- time
 
 g2 <- ggplot(m.df.do, aes((time), as.numeric(variable)*dx)) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
-  scale_fill_gradientn(limits = c(0,8),
+  scale_fill_gradientn(limits = c(6,10),
                        colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
   theme_minimal()  +xlab('Time') +
   ylab('Depth') +
