@@ -14,11 +14,15 @@ library(tidyverse)
 library(RColorBrewer)
 library(patchwork)
 library(LakeMetabolizer)
+library(reshape2)
 
 source('1D_HeatMixing_functions.R')
 
+# Sky Pond
+# https://github.com/bellaoleksy/FABs-DO-concept
+
 ## lake configurations
-zmax = 3 # maximum lake depth
+zmax = 7.4 # maximum lake depth
 nx = 15 # number of layers we will have
 dt = 3600  # 24 hours times 60 min/hour times 60 seconds/min
 dx = zmax/nx # spatial step
@@ -26,23 +30,49 @@ dx = zmax/nx # spatial step
 ## area and depth values of our lake 
 hyps_all <- get_hypsography(hypsofile = 'bc/LakeEnsemblR_bathymetry_standard.csv',
                             dx = dx, nx = nx)
-hyps_all[[1]][15] = hyps_all[[1]][15] /1e2
-hyps_all[[3]][15] = hyps_all[[1]][15] * dx
+# hyps_all[[1]][15] = hyps_all[[1]][15] /1e2
+# hyps_all[[3]][15] = hyps_all[[1]][15] * dx
+
+wnd <- read_csv('FABs-DO-concept/data/sky_2016_windSpeed.txt')
+par <- read_csv('FABs-DO-concept/data/sky_2016_PAR.txt')
+range_meteo <- range(wnd$dateTime)
+
+airT <- read_csv('bc/mainwx_airT_2m_6m_daily_19821001_20180118.csv') 
+airT$date <- as.Date(airT$date, format = '%m/%d/%y')
+airT = airT %>%
+  dplyr::filter(date >= range_meteo[1] & date <= range_meteo[2])
+interpolated_2m_airT <- approx(x = as.numeric(as.POSIXct(paste(airT$date, '00:00:00'))), y = airT$Tave2M_C, 
+                               xout = as.numeric(par$dateTime[which(!is.na(par$PAR))]), rule = 2)$y
+
+df <- read_csv('bc/LakeEnsemblR_meteo_standard.csv') %>%
+  dplyr::filter(datetime >= range_meteo[1] & datetime <= range_meteo[2])
+df$Shortwave_Radiation_Downwelling_wattPerMeterSquared <- na.omit(par$PAR)
+df$Ten_Meter_Elevation_Wind_Speed_meterPerSecond <- na.omit(wnd$windSpeed)
+df$Air_Temperature_celsius <- interpolated_2m_airT
+
+write_csv(x = df, file = 'bc/LakeEnsemblR_meteo_standard.csv')
 
 ## atmospheric boundary conditions
 meteo_data <- provide_meteorology(meteofile = 'bc/LakeEnsemblR_meteo_standard.csv',
                     secchifile = 'bc/light.csv', 
-                    windfactor = 0.8)
+                    windfactor = 1.)
 
 meteo_all = list()
 
-t1 <- as.POSIXct('2009-01-01 00:00:00')
-t2 <- as.POSIXct('2010-09-07 23:30:00')
 meteo_all[[1]] = meteo_data[[1]] %>%
-  dplyr::filter(datetime >= t1 & datetime <= t2)
+  dplyr::filter(datetime >= range_meteo[1]  & datetime <= range_meteo[2] )
 
 meteo_all[[1]]$dt <- as.POSIXct(meteo_all[[1]]$datetime) - (as.POSIXct(meteo_all[[1]]$datetime)[1]) + 1
 meteo_all[[1]]$Surface_Level_Barometric_Pressure_pascal = meteo_all[[1]]$Surface_Level_Barometric_Pressure_pascal + 3000
+
+df.obs <- read_csv('FABs-DO-concept/data/sky_2016_tempProfile.txt')
+colnames(df.obs) <- c('datetime', '0.5', '2.0', '4.0', '6.0', '7.0')
+df_obs <- melt(df.obs, id.vars = c("datetime")) %>%
+  arrange(datetime) %>%
+  rename(Depth_meter = variable, Water_Temperature_celsius = value)
+
+write_csv(x = df_obs, file = 'bc/obs.txt')
+  
 
 ## here we define our initial profile
 u_ini <- initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
@@ -52,9 +82,13 @@ u_ini <- initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
 meteo_all[[2]] = meteo_data[[2]]
 
 ### EXAMPLE RUNS
+# do the meteo interpolation all at the start
 hydrodynamic_timestep = 24 * 3600 #24/4 * dt
-total_runtime <- as.numeric(floor(t2-t1))
+total_runtime <- as.numeric(floor(range_meteo[2]-range_meteo[1]))
 startingDate <- meteo_all[[1]]$datetime[1]
+
+meteo = get_interp_drivers(meteo_all=meteo_all, total_runtime=total_runtime, 
+                           hydrodynamic_timestep=hydrodynamic_timestep, dt=dt, method="integrate")
 
 temp <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
               nrow = nx)
@@ -77,9 +111,11 @@ buoyancy <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
 dissoxygen <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                nrow = nx)
 
-# do the meteo interpolation all at the start
-meteo = get_interp_drivers(meteo_all=meteo_all, total_runtime=total_runtime, 
-                           hydrodynamic_timestep=hydrodynamic_timestep, dt=dt, method="integrate")
+dissoxygen <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+                     nrow = nx)
+icethickness <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+                         nrow = 1)
+
 
 peri_kd <- rep(0, length( hyps_all[[2]]))
 peri_kd[length(peri_kd)] = 1
@@ -139,17 +175,18 @@ for (i in 1:total_runtime){
                            scheme = 'implicit',
                            km = km,
                            do = do,
-                           Fvol = 1,#0.01
-                           Fred = 0.005,##0.36,
+                           Fvol = 1e-10,#1,#0.01
+                           Fred = 1e-10, #0.005,##0.36,
                            Do2 = 1.08 * 10^(-4),
-                           delta_DBL = 0.1/1000,
-                           eff_area = 1e-6)
+                           delta_DBL = 0.01/1000,
+                           eff_area = 1e-11)
 
   temp[, matrix_range_start:matrix_range_end] =  res$temp
   diff[, matrix_range_start:matrix_range_end] =  res$diff
   avgtemp[matrix_range_start:matrix_range_end,] <- as.matrix(res$average)
   buoyancy[, matrix_range_start:matrix_range_end] =  res$temp
   dissoxygen[, matrix_range_start:matrix_range_end] =  res$dissoxygen
+  icethickness[, matrix_range] =  res$icethickness_matrix
   
   average <- res$average %>%
     mutate(datetime = as.POSIXct(startingDate + time),
@@ -158,10 +195,11 @@ for (i in 1:total_runtime){
   
 }
 
+plot(seq(1, ncol(temp))*dt/24/3600, icethickness)
 
 # plotting for checking model output and performance
 plot(seq(1, ncol(temp))*dt/24/3600, temp[1,], col = 'red', type = 'l', 
-     xlab = 'Time (d)', ylab='Temperature (degC)', ylim=c(0,30), lwd = 2)
+     xlab = 'Time (d)', ylab='Temperature (degC)', ylim=c(-10,30), lwd = 2)
 for (i in 2:nx){
   lines(seq(1, ncol(temp))*dt/24/3600, temp[i,], 
         lty = 'dashed',lwd =2)
@@ -221,7 +259,7 @@ m.df.do$time <- time
 
 g2 <- ggplot(m.df.do, aes((time), as.numeric(variable)*dx)) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
-  scale_fill_gradientn(limits = c(0,15),
+  scale_fill_gradientn(limits = c(0,8),
                        colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
   theme_minimal()  +xlab('Time') +
   ylab('Depth') +

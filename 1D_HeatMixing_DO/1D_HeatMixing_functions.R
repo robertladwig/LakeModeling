@@ -39,8 +39,8 @@ provide_meteorology <- function(meteofile, secchifile,
                                                 airt = daily_meteo$Air_Temperature_celsius,
                                                 relh = daily_meteo$Relative_Humidity_percent,
                                                 swr = daily_meteo$Shortwave_Radiation_Downwelling_wattPerMeterSquared,
-                                                lat = 43, lon = -89.41,
-                                                elev = 258)
+                                                lat = 40, lon = -105,
+                                                elev = 3110)
   daily_meteo$dt <- as.POSIXct(daily_meteo$date) - (as.POSIXct(daily_meteo$date)[1]) + 1
   daily_meteo$ea <- (daily_meteo$Relative_Humidity_percent * (4.596 * exp((17.27*(daily_meteo$Air_Temperature_celsius))/
                                                                             (237.3 + (daily_meteo$Air_Temperature_celsius) )))/100)
@@ -89,7 +89,7 @@ initial_profile <- function(initfile, nx, dx, depth, processed_meteo){
     init.df$Depth_meter[nrow(init.df)] <- max(depth)
   }
   u = approx(init.df$Depth_meter, init.df$Water_Temperature_celsius,
-             seq(0, nx * dx, length.out= nx))$y
+             seq(0, nx * dx, length.out= nx), rule = 2)$y
   warning(paste0('Meteorological starting date is ',as.Date(startDate),', but observed data starts ',min(init.df$ditt),' days later on ',
                  as.Date(min(init.df$datetime))))
   return(u)
@@ -480,6 +480,7 @@ run_thermalmodel <- function(u, startTime, endTime,
       }
       # surface layer
       do[1] = don[1] +
+        (Fvol/86400) * dt +
         (k600 * (o2sat - don[1])) * dt/dx
       
       bbl_area = area * eff_area
@@ -494,6 +495,7 @@ run_thermalmodel <- function(u, startTime, endTime,
       Do2 = exp((-4.410 + (773.8)/(u[nx] + 273.15) - ((506.4)/(u[nx] + 273.15))^2)/1e4)
       
       do[nx] = don[nx] +
+        (Fvol/86400) * dt +
         (- bbl_area[i] * Fred/86400 - bbl_area[i] * (Do2)/delta_DBL * don[nx]) * dt/volume[nx]
       
       do[which(do < 0)] = 0
@@ -654,6 +656,7 @@ run_thermalmodel <- function(u, startTime, endTime,
     icep  = max(dt_iceon_avg,  (dt/86400))
     x = (dt/86400) / icep
     iceT = iceT * (1 - x) + u[1] * x
+    Him[ n] <- Hi
     if ((iceT <= 0) == TRUE & Hi < Ice_min){
       # if (any(u <= 0) == TRUE){
       supercooled <- which(u < 0)
@@ -674,7 +677,7 @@ run_thermalmodel <- function(u, startTime, endTime,
         }
       }
       ice = TRUE
-      if (Hi > 0){
+      if (Hi >= 0){
         u[supercooled] = 0
         u[1] = 0
       }
@@ -694,6 +697,7 @@ run_thermalmodel <- function(u, startTime, endTime,
       Him[ n] <- Hi
     } else if (ice == TRUE & Hi < Ice_min){
       ice = FALSE 
+      Him[ n] <- Hi
     }
 
     dom[, n] <- do
@@ -782,7 +786,8 @@ run_thermalmodel <- function(u, startTime, endTime,
              'thermoclinedepth' = therm.z,
              'endtime' = endTime,
              'average' = df.avg.sim,
-             'dissoxygen' = dom)
+             'dissoxygen' = dom,
+             'icethickness_matrix' = Him)
   if (pgdl_mode == 'on'){
     dat = list('temp'  = um,
                'diff' = kzm,
