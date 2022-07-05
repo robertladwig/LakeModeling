@@ -478,28 +478,34 @@ run_thermalmodel <- function(u, startTime, endTime,
       if (ice){
         k600 = 1e-4/86400
       }
+      
+      part_volume <- (volume * 1)/sum(volume)
+      
       # surface layer
       do[1] = don[1] +
-        (Fvol/86400) * dt +
-        (k600 * (o2sat - don[1])) * dt/dx
+        ((Fvol/86400) * dt* part_volume[1] +
+        (k600 * (o2sat - don[1])) * dt/dx * volume[nx])/volume[1]
       
       bbl_area = area * eff_area
+      
+      Do2 = exp((-4.410 + (773.8)/(u[nx] + 273.15) - ((506.4)/(u[nx] + 273.15))^2))/1e4
+      #Do2 = 0
       
       # all other layers in between
       for (i in 2:(nx-1)){
         do[i] = don[i] +
-          (Fvol/86400) * dt +
-          (- bbl_area[i] * Fred/86400 - bbl_area[i] * (Do2)/delta_DBL * don[nx]) * dt/volume[nx]
+          ((Fvol/86400) * dt * part_volume[i] +
+          (- bbl_area[i] * Fred/86400 - bbl_area[i] * (Do2)/delta_DBL * don[i]) * dt/volume[i])
       }
       
-      Do2 = exp((-4.410 + (773.8)/(u[nx] + 273.15) - ((506.4)/(u[nx] + 273.15))^2)/1e4)
+      
       
       do[nx] = don[nx] +
-        (Fvol/86400) * dt +
-        (- bbl_area[i] * Fred/86400 - bbl_area[i] * (Do2)/delta_DBL * don[nx]) * dt/volume[nx]
+        (Fvol/86400) * dt * part_volume[nx] +
+        (- bbl_area[nx] * Fred/86400 - bbl_area[nx] * (Do2)/delta_DBL * don[nx]) * dt/volume[nx]
       
       do[which(do < 0)] = 0
-      do[which(do > (14.7 - 0.0017 * 4800) * exp(-0.0225*u))] = (14.7 - 0.0017 * 4800) * exp(-0.0225*u)
+      # do[which(do > (14.7 - 0.0017 * 4800) * exp(-0.0225*u))] = (14.7 - 0.0017 * 4800) * exp(-0.0225*u)
       
       ## (2b) Diffusion by Crank-Nicholson Scheme (CNS)
       j <- length(don)

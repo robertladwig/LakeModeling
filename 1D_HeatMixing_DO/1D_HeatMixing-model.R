@@ -46,7 +46,7 @@ interpolated_2m_airT <- approx(x = as.numeric(as.POSIXct(paste(airT$date, '00:00
 
 df <- read_csv('bc/LakeEnsemblR_meteo_standard.csv') %>%
   dplyr::filter(datetime >= range_meteo[1] & datetime <= range_meteo[2])
-df$Shortwave_Radiation_Downwelling_wattPerMeterSquared <- na.omit(par$PAR)
+df$Shortwave_Radiation_Downwelling_wattPerMeterSquared <- na.omit(par$PAR) / 2.16
 df$Ten_Meter_Elevation_Wind_Speed_meterPerSecond <- na.omit(wnd$windSpeed)
 df$Air_Temperature_celsius <- interpolated_2m_airT
 
@@ -72,6 +72,20 @@ df_obs <- melt(df.obs, id.vars = c("datetime")) %>%
   rename(Depth_meter = variable, Water_Temperature_celsius = value)
 
 write_csv(x = df_obs, file = 'bc/obs.txt')
+
+df.obs1 <- read_csv('FABs-DO-concept/data/sky_2016_DO_0.5m.txt') %>%
+  dplyr::filter(dateTime >= range_meteo[1] & dateTime <= range_meteo[2])
+df.obs2 <- read_csv('FABs-DO-concept/data/sky_2016_DO_6.5m.txt') %>%
+  dplyr::filter(dateTime >= range_meteo[1] & dateTime <= range_meteo[2])
+df.obs_do <- data.frame('datetime' = df.obs1$dateTime, '0.5' = df.obs1$DO, '6.5' = df.obs2$DO)
+colnames(df.obs_do) <- c('datetime', '0.5', '6.5')
+df_obs_do <- melt(df.obs_do, id.vars = c("datetime")) %>%
+  arrange(datetime) %>%
+  rename(Depth_meter = variable, Dissolved_oxygen_gram_per_cubicMeter = value)
+
+df_obs_do_tofile <- df_obs_do
+colnames(df_obs_do_tofile) <- c("datetime","Depth_meter","Water_Temperature_celsius")
+write_csv(x = df_obs_do_tofile, file = 'bc/obs_do.txt')
   
 
 ## here we define our initial profile
@@ -122,6 +136,9 @@ peri_kd[length(peri_kd)] = 1
 km = 0 * peri_kd
 
 do_ini = (14.7 - 0.0017 * 4800) * exp(-0.0225*u_ini)
+do_ini = initial_profile(initfile = 'bc/obs_do.txt', nx = nx, dx = dx,
+                         depth = hyps_all[[2]],
+                         processed_meteo = meteo_all[[1]])
 
 if (exists('res')) {remove('res')}
 
@@ -175,11 +192,11 @@ for (i in 1:total_runtime){
                            scheme = 'implicit',
                            km = km,
                            do = do,
-                           Fvol = 1e-10,#1,#0.01
-                           Fred = 1e-10, #0.005,##0.36,
+                           Fvol = 0.1,#0.01
+                           Fred = 0.5, #0.005,##0.36,
                            Do2 = 1.08 * 10^(-4),
-                           delta_DBL = 0.01/1000,
-                           eff_area = 1e-11)
+                           delta_DBL = 1/1000,
+                           eff_area = seq(from = 1e-20,to = 1e-10,length.out = length(hyps_all[[1]])))
 
   temp[, matrix_range_start:matrix_range_end] =  res$temp
   diff[, matrix_range_start:matrix_range_end] =  res$diff
@@ -199,7 +216,7 @@ plot(seq(1, ncol(temp))*dt/24/3600, icethickness)
 
 # plotting for checking model output and performance
 plot(seq(1, ncol(temp))*dt/24/3600, temp[1,], col = 'red', type = 'l', 
-     xlab = 'Time (d)', ylab='Temperature (degC)', ylim=c(-10,30), lwd = 2)
+     xlab = 'Time (d)', ylab='Temperature (degC)', ylim=c(-1,30), lwd = 2)
 for (i in 2:nx){
   lines(seq(1, ncol(temp))*dt/24/3600, temp[i,], 
         lty = 'dashed',lwd =2)
@@ -245,7 +262,7 @@ m.df$time <- time
 
 g1 <- ggplot(m.df, aes((time), as.numeric(variable)*dx)) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
-  scale_fill_gradientn(limits = c(-2,35),
+  scale_fill_gradientn(limits = c(-2,15),
                        colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
   theme_minimal()  +xlab('Time') +
   ylab('Depth') +
@@ -279,18 +296,30 @@ for (i in seq(1,ncol(temp), length.out = 300)){
     mutate(dosat = (14.7 - 0.0017 * 4800) * exp(-0.0225*value))
   sim.do = m.df.do %>% 
     dplyr::filter(time == time[i]) 
+  
+  obs = df_obs %>% 
+    dplyr::filter(datetime == time[i]) %>%
+    mutate(dosat = (14.7 - 0.0017 * 4800) * exp(-0.0225*Water_Temperature_celsius))
+  obs.do = df_obs_do %>% 
+    dplyr::filter(datetime == time[i]) 
 
   ggplot() +
     geom_path(data = sim, aes(value, 
                               as.numeric(variable) * dx, col = 'T (degC)'), size = 1.2) +
+    geom_point(data = obs, aes(Water_Temperature_celsius, 
+                               as.numeric(as.character(Depth_meter)), col = 'obs T (degC)'), size = 1.2) +
     geom_path(data = sim, aes(dosat * 2, 
                               as.numeric(variable) * dx, col = 'saturated DO (g/m3)'), size = 1.2,
               linetype  = 'dashed') +
+    geom_point(data = obs, aes(dosat, 
+                               as.numeric(as.character(Depth_meter)), col = 'obs saturated DO (g/m3)'), size = 1.2) +
     geom_path(data = sim.do, aes(value * 2, 
                               as.numeric(variable) * dx, col = 'DO (g/m3)'), size = 1.2) +
+    geom_point(data = obs.do, aes(Dissolved_oxygen_gram_per_cubicMeter * 2, 
+                                  as.numeric(as.character(Depth_meter)) , col = 'obs DO (g/m3)'), size = 1.2) +
     xlab('temp. (deg C)') + ylab('depth (m)')+
     scale_y_reverse() +
-    scale_color_manual(values = c("#56B4E9", "lightblue", "red")) +
+    scale_color_manual(values = c("#56B4E9", "#56B4E9", "lightblue",'red', 'lightblue', 'red')) +
     scale_x_continuous(sec.axis = sec_axis(~ . /2, name = "diss. oxygen (g/m3)"), limits = c(-2,30)) +
     ggtitle( time[i]) + 
     labs(col='') +
