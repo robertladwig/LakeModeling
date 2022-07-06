@@ -192,8 +192,8 @@ for (i in 1:total_runtime){
                            scheme = 'implicit',
                            km = km,
                            do = do,
-                           Fvol = 0.1,#0.01
-                           Fred = 0.5, #0.005,##0.36,
+                           Fvol = 0.3,#0.01
+                           Fred = 0.7, #0.005,##0.36,
                            Do2 = 1.08 * 10^(-4),
                            delta_DBL = 1/1000,
                            eff_area = seq(from = 1e-20,to = 1e-10,length.out = length(hyps_all[[1]])))
