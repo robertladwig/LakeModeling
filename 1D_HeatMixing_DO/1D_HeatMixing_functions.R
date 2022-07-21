@@ -62,16 +62,21 @@ provide_meteorology <- function(meteofile, secchifile,
   ## light
   # Package ID: knb-lter-ntl.31.30 Cataloging System:https://pasta.edirepository.org.
   # Data set title: North Temperate Lakes LTER: Secchi Disk Depth; Other Auxiliary Base Crew Sample Data 1981 - current.
-  secview <- read_csv(secchifile) %>%
-    dplyr::filter(sampledate >= startDate)
-  if (secview$sampledate[1] >= startDate){
-    secview <- rbind(data.frame('sampledate' = startDate,
-                                'secnview' = secview$secnview[1]),
-                     secview)
+  if (!is.null(secchifile)){
+    secview <- read_csv(secchifile) %>%
+      dplyr::filter(sampledate >= startDate)
+    if (secview$sampledate[1] >= startDate){
+      secview <- rbind(data.frame('sampledate' = startDate,
+                                  'secnview' = secview$secnview[1]),
+                       secview)
+    }
+    secview$dt <- as.POSIXct(secview$sampledate) - (as.POSIXct(secview$sampledate)[1]) + 1
+    secview$kd <- 1.7 / secview$secnview
+    secview$kd  <- zoo::na.approx(secview$kd)
+  } else {
+    secview = NULL
   }
-  secview$dt <- as.POSIXct(secview$sampledate) - (as.POSIXct(secview$sampledate)[1]) + 1
-  secview$kd <- 1.7 / secview$secnview
-  secview$kd  <- zoo::na.approx(secview$kd)
+
   
   return(list(daily_meteo, secview))
 }

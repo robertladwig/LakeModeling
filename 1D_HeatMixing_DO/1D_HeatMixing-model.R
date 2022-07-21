@@ -22,7 +22,7 @@ source('1D_HeatMixing_functions.R')
 # https://github.com/bellaoleksy/FABs-DO-concept
 
 ## lake configurations
-zmax = 7.4 # maximum lake depth
+zmax = 5 # maximum lake depth
 nx = 15 # number of layers we will have
 dt = 3600  # 24 hours times 60 min/hour times 60 seconds/min
 dx = zmax/nx # spatial step
@@ -33,28 +33,52 @@ hyps_all <- get_hypsography(hypsofile = 'bc/LakeEnsemblR_bathymetry_standard.csv
 # hyps_all[[1]][15] = hyps_all[[1]][15] /1e2
 # hyps_all[[3]][15] = hyps_all[[1]][15] * dx
 
-wnd <- read_csv('FABs-DO-concept/data/sky_2016_windSpeed.txt')
-par <- read_csv('FABs-DO-concept/data/sky_2016_PAR.txt')
-range_meteo <- range(wnd$dateTime)
+# wnd <- read_csv('FABs-DO-concept/data/sky_2016_windSpeed.txt')
+# par <- read_csv('FABs-DO-concept/data/sky_2016_PAR.txt')
+# range_meteo <- range(wnd$dateTime)
+meteo <- read_csv('FABs-DO-concept/data/WY2016to2022_LochVale_WX.csv')
+idx <- na.contiguous(meteo$SWin)
+meteo <- meteo[35789:nrow(meteo),]
+range_meteo <- range(meteo$dateTime)
 
-airT <- read_csv('bc/mainwx_airT_2m_6m_daily_19821001_20180118.csv') 
-airT$date <- as.Date(airT$date, format = '%m/%d/%y')
-airT = airT %>%
-  dplyr::filter(date >= range_meteo[1] & date <= range_meteo[2])
-interpolated_2m_airT <- approx(x = as.numeric(as.POSIXct(paste(airT$date, '00:00:00'))), y = airT$Tave2M_C, 
-                               xout = as.numeric(par$dateTime[which(!is.na(par$PAR))]), rule = 2)$y
+interpolated_sw <- approx(x = as.numeric(as.POSIXct((meteo$dateTime))), y = meteo$SWin,
+                               xout = as.numeric(as.POSIXct((meteo$dateTime))), rule = 2)$y
+interpolated_rh <- approx(x = as.numeric(as.POSIXct((meteo$dateTime))), y = meteo$RH,
+                          xout = as.numeric(as.POSIXct((meteo$dateTime))), rule = 2)$y
 
-df <- read_csv('bc/LakeEnsemblR_meteo_standard.csv') %>%
-  dplyr::filter(datetime >= range_meteo[1] & datetime <= range_meteo[2])
-df$Shortwave_Radiation_Downwelling_wattPerMeterSquared <- na.omit(par$PAR) / 2.16
-df$Ten_Meter_Elevation_Wind_Speed_meterPerSecond <- na.omit(wnd$windSpeed)
-df$Air_Temperature_celsius <- interpolated_2m_airT
+
+# airT <- read_csv('bc/mainwx_airT_2m_6m_daily_19821001_20180118.csv') 
+# airT$date <- as.Date(airT$date, format = '%m/%d/%y')
+# airT = airT %>%
+#   dplyr::filter(date >= range_meteo[1] & date <= range_meteo[2])
+# interpolated_2m_airT <- approx(x = as.numeric(as.POSIXct(paste(airT$date, '00:00:00'))), y = airT$Tave2M_C, 
+#                                xout = as.numeric(par$dateTime[which(!is.na(par$PAR))]), rule = 2)$y
+
+# df <- read_csv('bc/NLDAS2_Mendota_1979_2016_cell_5_GLMReady_cut_timezonecorr.csv') %>%
+#   dplyr::filter(Date >= range_meteo[1] & Date <= range_meteo[2])
+df = data.frame(matrix(ncol = 9, nrow = nrow(meteo)))
+colnames(df) = c("datetime","Shortwave_Radiation_Downwelling_wattPerMeterSquared",
+                 "Longwave_Radiation_Downwelling_wattPerMeterSquared",
+                "Air_Temperature_celsius",
+                "Relative_Humidity_percent",
+                "Ten_Meter_Elevation_Wind_Speed_meterPerSecond",
+                "Precipitation_millimeterPerDay", "Snowfall_millimeterPerDay",
+                "Surface_Level_Barometric_Pressure_pascal")
+df$Shortwave_Radiation_Downwelling_wattPerMeterSquared <-interpolated_sw #/ 2.16
+df$Ten_Meter_Elevation_Wind_Speed_meterPerSecond <- (meteo$WSpd)
+df$Air_Temperature_celsius <- meteo$T_air
+df$Relative_Humidity_percent <- interpolated_rh
+df$Surface_Level_Barometric_Pressure_pascal = 98393
+df$Longwave_Radiation_Downwelling_wattPerMeterSquared = -999
+df$Precipitation_millimeterPerDay = -999
+df$Snowfall_millimeterPerDay =-999
+df$datetime = meteo$dateTime
 
 write_csv(x = df, file = 'bc/LakeEnsemblR_meteo_standard.csv')
 
 ## atmospheric boundary conditions
 meteo_data <- provide_meteorology(meteofile = 'bc/LakeEnsemblR_meteo_standard.csv',
-                    secchifile = 'bc/light.csv', 
+                    secchifile = NULL, 
                     windfactor = 1.)
 
 meteo_all = list()
@@ -63,28 +87,40 @@ meteo_all[[1]] = meteo_data[[1]] %>%
   dplyr::filter(datetime >= range_meteo[1]  & datetime <= range_meteo[2] )
 
 meteo_all[[1]]$dt <- as.POSIXct(meteo_all[[1]]$datetime) - (as.POSIXct(meteo_all[[1]]$datetime)[1]) + 1
-meteo_all[[1]]$Surface_Level_Barometric_Pressure_pascal = meteo_all[[1]]$Surface_Level_Barometric_Pressure_pascal + 3000
+# meteo_all[[1]]$Surface_Level_Barometric_Pressure_pascal = meteo_all[[1]]$Surface_Level_Barometric_Pressure_pascal + 3000
 
-df.obs <- read_csv('FABs-DO-concept/data/sky_2016_tempProfile.txt')
-colnames(df.obs) <- c('datetime', '0.5', '2.0', '4.0', '6.0', '7.0')
-df_obs <- melt(df.obs, id.vars = c("datetime")) %>%
-  arrange(datetime) %>%
-  rename(Depth_meter = variable, Water_Temperature_celsius = value)
+df.obs <- read_csv('FABs-DO-concept/data/loch_buoy_long_temp_DO_2016-07-19_to_2018-09-11.csv')
+df_obs = df.obs %>%
+  dplyr::filter(parameter == 'temp') %>%
+  arrange(dateTime) %>%
+  select(datetime = dateTime, Depth_meter = depth, Water_Temperature_celsius = value)
+
+df_obs_do = df.obs %>%
+  dplyr::filter(parameter == 'DO') %>%
+  arrange(dateTime) %>%
+  select(datetime = dateTime, Depth_meter = depth, Dissolved_oxygen_gram_per_cubicMeter = value)
+
+
+# colnames(df.obs) <- c('datetime', '0.5', '2.0', '4.0', '6.0', '7.0')
+# df_obs <- melt(df.obs, id.vars = c("datetime")) %>%
+#   arrange(datetime) %>%
+#   rename(Depth_meter = variable, Water_Temperature_celsius = value)
 
 write_csv(x = df_obs, file = 'bc/obs.txt')
 
-df.obs1 <- read_csv('FABs-DO-concept/data/sky_2016_DO_0.5m.txt') %>%
-  dplyr::filter(dateTime >= range_meteo[1] & dateTime <= range_meteo[2])
-df.obs2 <- read_csv('FABs-DO-concept/data/sky_2016_DO_6.5m.txt') %>%
-  dplyr::filter(dateTime >= range_meteo[1] & dateTime <= range_meteo[2])
-df.obs_do <- data.frame('datetime' = df.obs1$dateTime, '0.5' = df.obs1$DO, '6.5' = df.obs2$DO)
-colnames(df.obs_do) <- c('datetime', '0.5', '6.5')
-df_obs_do <- melt(df.obs_do, id.vars = c("datetime")) %>%
-  arrange(datetime) %>%
-  rename(Depth_meter = variable, Dissolved_oxygen_gram_per_cubicMeter = value)
+# df.obs1 <- read_csv('FABs-DO-concept/data/sky_2016_DO_0.5m.txt') %>%
+#   dplyr::filter(dateTime >= range_meteo[1] & dateTime <= range_meteo[2])
+# df.obs2 <- read_csv('FABs-DO-concept/data/sky_2016_DO_6.5m.txt') %>%
+#   dplyr::filter(dateTime >= range_meteo[1] & dateTime <= range_meteo[2])
+# df.obs_do <- data.frame('datetime' = df.obs1$dateTime, '0.5' = df.obs1$DO, '6.5' = df.obs2$DO)
+# colnames(df.obs_do) <- c('datetime', '0.5', '6.5')
+# df_obs_do <- melt(df.obs_do, id.vars = c("datetime")) %>%
+#   arrange(datetime) %>%
+#   rename(Depth_meter = variable, Dissolved_oxygen_gram_per_cubicMeter = value)
 
-df_obs_do_tofile <- df_obs_do
-colnames(df_obs_do_tofile) <- c("datetime","Depth_meter","Water_Temperature_celsius")
+# df_obs_do_tofile <- df_obs_do
+# colnames(df_obs_do_tofile) <- c("datetime","Depth_meter","Water_Temperature_celsius")
+df_obs_do_tofile = df_obs_do
 write_csv(x = df_obs_do_tofile, file = 'bc/obs_do.txt')
   
 
