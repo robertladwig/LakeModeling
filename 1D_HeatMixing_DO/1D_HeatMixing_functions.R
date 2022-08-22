@@ -176,7 +176,8 @@ integrate_agg_fun <- function(dt, y, int_method){
   return(out)
 }
 
-get_interp_drivers <- function(meteo_all, total_runtime, hydrodynamic_timestep, dt, method="interp", int_method="average"){
+get_interp_drivers <- function(meteo_all, total_runtime, hydrodynamic_timestep, dt, method="interp", int_method="average",
+                               secchi){
   times = seq(1, 1 + total_runtime*hydrodynamic_timestep, dt)
   if(method == "interp"){
     meteo[1,] = approx(x = meteo_all[[1]]$dt, 
@@ -234,8 +235,12 @@ get_interp_drivers <- function(meteo_all, total_runtime, hydrodynamic_timestep, 
     for(i in 1:length(cols_interp_met)){
       comb[, cols_interp_met[i]] = approx(comb$dt, comb[, cols_interp_met[i]], comb$dt, method="linear", rule=2)$y
     }
-    comb[, "kd"] = approx(meteo_all[[2]]$dt, meteo_all[[2]]$kd, comb$dt, method="linear", rule=2)$y
-    # add group column
+    if (secchi){
+      comb[, "kd"] = approx(meteo_all[[2]]$dt, meteo_all[[2]]$kd, comb$dt, method="linear", rule=2)$y
+    } else {
+      comb[, "kd"] = -999
+    }
+# add group column
     dt_hold = dt
     comb = comb %>% 
       mutate(group = dt %/% dt_hold) %>% 

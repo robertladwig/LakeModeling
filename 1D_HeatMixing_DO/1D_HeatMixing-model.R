@@ -15,6 +15,7 @@ library(RColorBrewer)
 library(patchwork)
 library(LakeMetabolizer)
 library(reshape2)
+library(lubridate)
 
 source('1D_HeatMixing_functions.R')
 
@@ -33,18 +34,50 @@ hyps_all <- get_hypsography(hypsofile = 'bc/LakeEnsemblR_bathymetry_standard.csv
 # hyps_all[[1]][15] = hyps_all[[1]][15] /1e2
 # hyps_all[[3]][15] = hyps_all[[1]][15] * dx
 
+df.obs <- read_csv('FABs-DO-concept/data/loch_buoy_long_temp_DO_2016-07-19_to_2018-09-11.csv')
+df_obs = df.obs %>%
+  dplyr::filter(parameter == 'temp') %>%
+  arrange(dateTime) %>%
+  select(datetime = dateTime, Depth_meter = depth, Water_Temperature_celsius = value)
+
+df_obs_do = df.obs %>%
+  dplyr::filter(parameter == 'DO') %>%
+  arrange(dateTime) %>%
+  select(datetime = dateTime, Depth_meter = depth, Dissolved_oxygen_gram_per_cubicMeter = value)
+
+
+# colnames(df.obs) <- c('datetime', '0.5', '2.0', '4.0', '6.0', '7.0')
+# df_obs <- melt(df.obs, id.vars = c("datetime")) %>%
+#   arrange(datetime) %>%
+#   rename(Depth_meter = variable, Water_Temperature_celsius = value)
+
+write_csv(x = df_obs, file = 'bc/obs.txt')
+
 # wnd <- read_csv('FABs-DO-concept/data/sky_2016_windSpeed.txt')
 # par <- read_csv('FABs-DO-concept/data/sky_2016_PAR.txt')
 # range_meteo <- range(wnd$dateTime)
+dat <- read_csv('bc/WY1992to2019_LochVale_Climate.csv')
+
 meteo <- read_csv('FABs-DO-concept/data/WY2016to2022_LochVale_WX.csv')
 idx <- na.contiguous(meteo$SWin)
-meteo <- meteo[35789:nrow(meteo),]
-range_meteo <- range(meteo$dateTime)
+meteo <- meteo[match( as.POSIXct(as.Date(min(df_obs$datetime))), (as.POSIXct((meteo$dateTime),
+                                                                             format = '%m/%d/%y %H:%M'))):
+                 match( as.POSIXct(as.Date(max(df_obs$datetime))), (as.POSIXct((meteo$dateTime),
+                                                                               format = '%m/%d/%y %H:%M'))) ,]
+range_meteo <- range(as.POSIXct((meteo$dateTime),  format = '%m/%d/%y %H:%M'))
 
-interpolated_sw <- approx(x = as.numeric(as.POSIXct((meteo$dateTime))), y = meteo$SWin,
-                               xout = as.numeric(as.POSIXct((meteo$dateTime))), rule = 2)$y
-interpolated_rh <- approx(x = as.numeric(as.POSIXct((meteo$dateTime))), y = meteo$RH,
-                          xout = as.numeric(as.POSIXct((meteo$dateTime))), rule = 2)$y
+interpolated_sw <- approx(x = as.numeric(as.POSIXct((dat$timestamp), format = '%Y/%m/%d %H:%M:%S')), 
+                          y = dat$SWin,
+                               xout = as.numeric(as.POSIXct((meteo$dateTime),  format = '%m/%d/%y %H:%M')), rule = 2)$y
+interpolated_rh <- approx(x = as.numeric(as.POSIXct((dat$timestamp),format = '%Y/%m/%d %H:%M:%S')), 
+                          y = dat$RH,
+                          xout = as.numeric(as.POSIXct((meteo$dateTime),format = '%m/%d/%y %H:%M')), rule = 2)$y
+interpolated_lw <- approx(x = as.numeric(as.POSIXct((dat$timestamp),format = '%Y/%m/%d %H:%M:%S')), 
+                          y = dat$LWin,
+                          xout = as.numeric(as.POSIXct((meteo$dateTime),format = '%m/%d/%y %H:%M')), rule = 2)$y
+interpolated_airt <- approx(x = as.numeric(as.POSIXct((meteo$dateTime),format = '%m/%d/%y %H:%M')), 
+                          y = meteo$T_air,
+                          xout = as.numeric(as.POSIXct((meteo$dateTime),format = '%m/%d/%y %H:%M')), rule = 2)$y
 
 
 # airT <- read_csv('bc/mainwx_airT_2m_6m_daily_19821001_20180118.csv') 
@@ -66,13 +99,13 @@ colnames(df) = c("datetime","Shortwave_Radiation_Downwelling_wattPerMeterSquared
                 "Surface_Level_Barometric_Pressure_pascal")
 df$Shortwave_Radiation_Downwelling_wattPerMeterSquared <-interpolated_sw #/ 2.16
 df$Ten_Meter_Elevation_Wind_Speed_meterPerSecond <- (meteo$WSpd)
-df$Air_Temperature_celsius <- meteo$T_air
+df$Air_Temperature_celsius <- interpolated_airt
 df$Relative_Humidity_percent <- interpolated_rh
 df$Surface_Level_Barometric_Pressure_pascal = 98393
-df$Longwave_Radiation_Downwelling_wattPerMeterSquared = -999
+df$Longwave_Radiation_Downwelling_wattPerMeterSquared = interpolated_lw
 df$Precipitation_millimeterPerDay = -999
 df$Snowfall_millimeterPerDay =-999
-df$datetime = meteo$dateTime
+df$datetime = as.POSIXct((meteo$dateTime), format = '%m/%d/%y %H:%M')
 
 write_csv(x = df, file = 'bc/LakeEnsemblR_meteo_standard.csv')
 
@@ -89,24 +122,7 @@ meteo_all[[1]] = meteo_data[[1]] %>%
 meteo_all[[1]]$dt <- as.POSIXct(meteo_all[[1]]$datetime) - (as.POSIXct(meteo_all[[1]]$datetime)[1]) + 1
 # meteo_all[[1]]$Surface_Level_Barometric_Pressure_pascal = meteo_all[[1]]$Surface_Level_Barometric_Pressure_pascal + 3000
 
-df.obs <- read_csv('FABs-DO-concept/data/loch_buoy_long_temp_DO_2016-07-19_to_2018-09-11.csv')
-df_obs = df.obs %>%
-  dplyr::filter(parameter == 'temp') %>%
-  arrange(dateTime) %>%
-  select(datetime = dateTime, Depth_meter = depth, Water_Temperature_celsius = value)
 
-df_obs_do = df.obs %>%
-  dplyr::filter(parameter == 'DO') %>%
-  arrange(dateTime) %>%
-  select(datetime = dateTime, Depth_meter = depth, Dissolved_oxygen_gram_per_cubicMeter = value)
-
-
-# colnames(df.obs) <- c('datetime', '0.5', '2.0', '4.0', '6.0', '7.0')
-# df_obs <- melt(df.obs, id.vars = c("datetime")) %>%
-#   arrange(datetime) %>%
-#   rename(Depth_meter = variable, Water_Temperature_celsius = value)
-
-write_csv(x = df_obs, file = 'bc/obs.txt')
 
 # df.obs1 <- read_csv('FABs-DO-concept/data/sky_2016_DO_0.5m.txt') %>%
 #   dplyr::filter(dateTime >= range_meteo[1] & dateTime <= range_meteo[2])
@@ -138,7 +154,8 @@ total_runtime <- as.numeric(floor(range_meteo[2]-range_meteo[1]))
 startingDate <- meteo_all[[1]]$datetime[1]
 
 meteo = get_interp_drivers(meteo_all=meteo_all, total_runtime=total_runtime, 
-                           hydrodynamic_timestep=hydrodynamic_timestep, dt=dt, method="integrate")
+                           hydrodynamic_timestep=hydrodynamic_timestep, dt=dt, method="integrate",
+                           secchi =F)
 
 temp <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
               nrow = nx)
@@ -223,16 +240,16 @@ for (i in 1:total_runtime){
                             volume = hyps_all[[3]], # volume
                             daily_meteo = meteo[,matrix_range_start:matrix_range_end],
                             # secview = meteo_all[[2]],
-                            Cd = 0.0008,
+                            Cd = 0.0013,
                             pgdl_mode = 'off',
                            scheme = 'implicit',
                            km = km,
                            do = do,
-                           Fvol = 0.3,#0.01
-                           Fred = 0.7, #0.005,##0.36,
+                           Fvol = 0.1,#0.01
+                           Fred = 0.5, #0.005,##0.36,
                            Do2 = 1.08 * 10^(-4),
                            delta_DBL = 1/1000,
-                           eff_area = seq(from = 1e-20,to = 1e-10,length.out = length(hyps_all[[1]])))
+                           eff_area = seq(from = 1e-20,to = 1e-4,length.out = length(hyps_all[[1]])))
 
   temp[, matrix_range_start:matrix_range_end] =  res$temp
   diff[, matrix_range_start:matrix_range_end] =  res$diff
@@ -245,7 +262,6 @@ for (i in 1:total_runtime){
     mutate(datetime = as.POSIXct(startingDate + time),
            Date = as.Date(datetime, format = "%m/%d/%Y")) %>%
     summarise_all(mean)
-  
 }
 
 plot(seq(1, ncol(temp))*dt/24/3600, icethickness)
@@ -259,7 +275,7 @@ for (i in 2:nx){
 }
 
 plot(seq(1, ncol(dissoxygen))*dt/24/3600, dissoxygen[1,], col = 'red', type = 'l', 
-     xlab = 'Time (d)', ylab='Diss. Oxygen (g/m3)', ylim=c(0,10), lwd = 2)
+     xlab = 'Time (d)', ylab='Diss. Oxygen (g/m3)', ylim=c(0,25), lwd = 2)
 for (i in 2:nx){
   lines(seq(1, ncol(dissoxygen))*dt/24/3600, dissoxygen[i,], 
         lty = 'dashed',lwd =2)
@@ -312,7 +328,7 @@ m.df.do$time <- time
 
 g2 <- ggplot(m.df.do, aes((time), as.numeric(variable)*dx)) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
-  scale_fill_gradientn(limits = c(6,10),
+  scale_fill_gradientn(limits = c(0,15),
                        colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
   theme_minimal()  +xlab('Time') +
   ylab('Depth') +
@@ -336,22 +352,29 @@ for (i in seq(1,ncol(temp), length.out = 300)){
   obs = df_obs %>% 
     dplyr::filter(datetime == time[i]) %>%
     mutate(dosat = (14.7 - 0.0017 * 4800) * exp(-0.0225*Water_Temperature_celsius))
+  if (length(obs$Water_Temperature_celsius) == 0){
+    obs = data.frame('datetime' = time[i], 'Depth_meter' = 0, 'Water_Temperature_celsius' = NA,
+                     'dosat' = NA)
+  }
   obs.do = df_obs_do %>% 
     dplyr::filter(datetime == time[i]) 
+  if (length(obs.do$Dissolved_oxygen_gram_per_cubicMeter) == 0){
+    obs.do = data.frame('datetime' = time[i], 'Depth_meter' = 0, 'Dissolved_oxygen_gram_per_cubicMeter' = NA)
+  }
 
   ggplot() +
     geom_path(data = sim, aes(value, 
                               as.numeric(variable) * dx, col = 'T (degC)'), size = 1.2) +
-    geom_point(data = obs, aes(Water_Temperature_celsius, 
+    geom_point(data = obs, aes(as.numeric(Water_Temperature_celsius), 
                                as.numeric(as.character(Depth_meter)), col = 'obs T (degC)'), size = 1.2) +
-    geom_path(data = sim, aes(dosat * 2, 
+    geom_path(data = sim, aes(as.numeric(dosat) * 2, 
                               as.numeric(variable) * dx, col = 'saturated DO (g/m3)'), size = 1.2,
               linetype  = 'dashed') +
-    geom_point(data = obs, aes(dosat, 
+    geom_point(data = obs, aes(as.numeric(dosat), 
                                as.numeric(as.character(Depth_meter)), col = 'obs saturated DO (g/m3)'), size = 1.2) +
-    geom_path(data = sim.do, aes(value * 2, 
+    geom_path(data = sim.do, aes(as.numeric(value) * 2, 
                               as.numeric(variable) * dx, col = 'DO (g/m3)'), size = 1.2) +
-    geom_point(data = obs.do, aes(Dissolved_oxygen_gram_per_cubicMeter * 2, 
+    geom_point(data = obs.do, aes(as.numeric(Dissolved_oxygen_gram_per_cubicMeter) * 2, 
                                   as.numeric(as.character(Depth_meter)) , col = 'obs DO (g/m3)'), size = 1.2) +
     xlab('temp. (deg C)') + ylab('depth (m)')+
     scale_y_reverse() +
