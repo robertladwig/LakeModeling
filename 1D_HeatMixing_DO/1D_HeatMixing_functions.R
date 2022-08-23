@@ -84,16 +84,16 @@ provide_meteorology <- function(meteofile, secchifile,
 initial_profile <- function(initfile, nx, dx, depth, processed_meteo){
   meteo <- processed_meteo
   startDate <- meteo$datetime[1]
-  obs <- read_csv('bc/obs.txt')
+  obs <- read_csv(initfile)
   init.df <- obs %>% 
-    mutate(ditt = as.numeric(abs(as.Date(datetime) - as.Date(startDate)))) %>%
+    mutate(ditt = as.numeric(abs((datetime) - (startDate)))) %>%
     dplyr::filter(ditt == min(ditt)) %>%
     arrange(Depth_meter)
   if (max(depth) > max(init.df$Depth_meter)){
     init.df <- rbind(init.df, init.df[nrow(init.df),])
     init.df$Depth_meter[nrow(init.df)] <- max(depth)
   }
-  u = approx(init.df$Depth_meter, init.df$Water_Temperature_celsius,
+  u = approx(init.df$Depth_meter, as.numeric(unlist(init.df[,3])),
              seq(0, nx * dx, length.out= nx), rule = 2)$y
   warning(paste0('Meteorological starting date is ',as.Date(startDate),', but observed data starts ',min(init.df$ditt),' days later on ',
                  as.Date(min(init.df$datetime))))
@@ -504,15 +504,15 @@ run_thermalmodel <- function(u, startTime, endTime,
       # all other layers in between
       for (i in 2:(nx-1)){
         do[i] = don[i] +
-          ((Fvol/86400) * dt * part_volume[i] +
-          (- bbl_area[i] * Fred/86400 - bbl_area[i] * (Do2)/delta_DBL * don[i]) * dt/volume[i])
+          (Fvol/86400) * dt * part_volume[i]#  +
+         # (- area[i] * Fred/86400 - bbl_area[i] * (Do2)/delta_DBL * don[i]) * dt/volume[i]
       }
       
       
       
       do[nx] = don[nx] +
         (Fvol/86400) * dt * part_volume[nx] +
-        (- bbl_area[nx] * Fred/86400 - bbl_area[nx] * (Do2)/delta_DBL * don[nx]) * dt/volume[nx]
+        (- area[nx] * Fred/86400 - area[nx] * (Do2)/delta_DBL * don[nx]) * dt/volume[nx]
       
       do[which(do < 0)] = 0
       # do[which(do > (14.7 - 0.0017 * 4800) * exp(-0.0225*u))] = (14.7 - 0.0017 * 4800) * exp(-0.0225*u)
@@ -714,6 +714,11 @@ run_thermalmodel <- function(u, startTime, endTime,
     } else if (ice == TRUE & Hi < Ice_min){
       ice = FALSE 
       Him[ n] <- Hi
+    }
+    
+    if (ice == FALSE){
+      Hi = 0
+      Him[n] = Hi
     }
 
     dom[, n] <- do

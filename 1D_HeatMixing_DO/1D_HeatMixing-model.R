@@ -99,7 +99,7 @@ colnames(df) = c("datetime","Shortwave_Radiation_Downwelling_wattPerMeterSquared
                 "Surface_Level_Barometric_Pressure_pascal")
 df$Shortwave_Radiation_Downwelling_wattPerMeterSquared <-interpolated_sw #/ 2.16
 df$Ten_Meter_Elevation_Wind_Speed_meterPerSecond <- (meteo$WSpd)
-df$Air_Temperature_celsius <- interpolated_airt
+df$Air_Temperature_celsius <- interpolated_airt * 0.5
 df$Relative_Humidity_percent <- interpolated_rh
 df$Surface_Level_Barometric_Pressure_pascal = 98393
 df$Longwave_Radiation_Downwelling_wattPerMeterSquared = interpolated_lw
@@ -157,6 +157,8 @@ meteo = get_interp_drivers(meteo_all=meteo_all, total_runtime=total_runtime,
                            hydrodynamic_timestep=hydrodynamic_timestep, dt=dt, method="integrate",
                            secchi =F)
 
+
+
 temp <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
               nrow = nx)
 avgtemp <- matrix(NA, ncol = 6,
@@ -182,11 +184,13 @@ dissoxygen <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                      nrow = nx)
 icethickness <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                          nrow = 1)
+icelog <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+                       nrow = 1)
 
 
 peri_kd <- rep(0, length( hyps_all[[2]]))
-peri_kd[length(peri_kd)] = 1
-km = 0 * peri_kd
+peri_kd[length(peri_kd)] = 0.8
+km = peri_kd * 0# 0 * peri_kd
 
 do_ini = (14.7 - 0.0017 * 4800) * exp(-0.0225*u_ini)
 do_ini = initial_profile(initfile = 'bc/obs_do.txt', nx = nx, dx = dx,
@@ -205,7 +209,7 @@ for (i in 1:total_runtime){
     Hi = res$icethickness 
     iceT = res$icemovAvg
     supercooled = res$supercooled
-    kd_light = 0.1
+    kd_light = 0.3
     matrix_range = max(1, (startTime/dt)):((endTime/dt)) # this returns floats, not ints, after first round through? seems to cause issue down below in setting up avgtime
     matrix_range_start = max(1, round(startTime/dt) + 1)
     matrix_range_end = round(endTime/dt)
@@ -216,9 +220,9 @@ for (i in 1:total_runtime){
     endTime = hydrodynamic_timestep - 1
     ice = FALSE
     Hi = 0
-    iceT = 6
+    iceT = 20#6
     supercooled = 0
-    kd_light = 0.1
+    kd_light = 0.3
     matrix_range = max(1, (startTime/dt)):((endTime/dt)+1)
     matrix_range_start = max(1, round(startTime/dt))
     matrix_range_end = round(endTime/dt)
@@ -230,6 +234,8 @@ for (i in 1:total_runtime){
                             Hi = Hi, 
                             iceT = iceT,
                             supercooled = supercooled,
+                           dt_iceon_avg = 0.1, 
+                           Hgeo = 0.1,
                             kd_light = kd_light,
                             zmax = zmax,
                             nx = nx,
@@ -245,11 +251,13 @@ for (i in 1:total_runtime){
                            scheme = 'implicit',
                            km = km,
                            do = do,
-                           Fvol = 0.1,#0.01
-                           Fred = 0.5, #0.005,##0.36,
+                           Fvol = 0.2, #0.01
+                           Fred = 1.5, #0.005,##0.36,
                            Do2 = 1.08 * 10^(-4),
                            delta_DBL = 1/1000,
-                           eff_area = seq(from = 1e-20,to = 1e-4,length.out = length(hyps_all[[1]])))
+                           eff_area = seq(from = 1e-10,to = 1e-4,length.out = length(hyps_all[[1]]))
+                           #  seq(from = 1e-20,to = 0.0002,length.out = length(hyps_all[[1]]))
+                           )
 
   temp[, matrix_range_start:matrix_range_end] =  res$temp
   diff[, matrix_range_start:matrix_range_end] =  res$diff
@@ -257,12 +265,52 @@ for (i in 1:total_runtime){
   buoyancy[, matrix_range_start:matrix_range_end] =  res$temp
   dissoxygen[, matrix_range_start:matrix_range_end] =  res$dissoxygen
   icethickness[, matrix_range] =  res$icethickness_matrix
+  icelog[, matrix_range] = res$iceflag
   
   average <- res$average %>%
     mutate(datetime = as.POSIXct(startingDate + time),
            Date = as.Date(datetime, format = "%m/%d/%Y")) %>%
     summarise_all(mean)
 }
+
+time =  startingDate + seq(1, ncol(temp), 1) * dt
+
+
+surf_z = which.min( abs(seq(0, zmax, length = nx)  - min(df_obs$Depth_meter) ))
+bottom_z = which.min( abs(seq(0, zmax, length = nx)  - max(df_obs$Depth_meter) ))
+surf_temp = df_obs %>% filter(Depth_meter == min(Depth_meter))
+bottom_temp = df_obs %>% filter(Depth_meter == max(Depth_meter))
+
+plot(time, temp[surf_z,], col = 'red', type = 'l', 
+     xlab = 'Time (d)', ylab='Temperature (degC)', ylim=c(-10,20), lwd = 2)
+points(surf_temp$datetime, surf_temp$Water_Temperature_celsius)
+
+plot(time, temp[bottom_z,], col = 'red', type = 'l', 
+     xlab = 'Time (d)', ylab='Temperature (degC)', ylim=c(-10,20), lwd = 2)
+points(bottom_temp$datetime, bottom_temp$Water_Temperature_celsius)
+
+surf_z = which.min( abs(seq(0, zmax, length = nx)  - min( df_obs_do$Depth_meter) ))
+bottom_z = which.min( abs(seq(0, zmax, length = nx)  - max( df_obs_do$Depth_meter) ))
+surf_do =  df_obs_do %>% filter(Depth_meter == min(Depth_meter))
+bottom_do =  df_obs_do %>% filter(Depth_meter == max(Depth_meter))
+
+plot(time, dissoxygen[surf_z,], col = 'red', type = 'l', 
+     xlab = 'Time (d)', ylab='DO (g/m3)', ylim=c(0,20), lwd = 2)
+points(surf_do$datetime, surf_do$Dissolved_oxygen_gram_per_cubicMeter)
+
+plot(time, dissoxygen[bottom_z,], col = 'red', type = 'l', 
+     xlab = 'Time (d)', ylab='DO (g/m3)', ylim=c(0,20), lwd = 2)
+points(bottom_do$datetime, bottom_do$Dissolved_oxygen_gram_per_cubicMeter)
+
+idx = match(surf_temp$datetime, bottom_temp$datetime)
+plot(bottom_temp$datetime, 100 *(calc_dens(bottom_temp$Water_Temperature_celsius) -  calc_dens( surf_temp$Water_Temperature_celsius[!is.na(idx)])), col = 'red', type = 'l', 
+     xlab = 'Time (d)', ylab='Temp)', ylim=c(0,20), lwd = 2) 
+points(bottom_do$datetime, bottom_do$Dissolved_oxygen_gram_per_cubicMeter)
+
+icelog_ts = ifelse(icelog == T,1,0)
+plot(seq(1, ncol(temp))*dt/24/3600,icelog_ts)
+
+
 
 plot(seq(1, ncol(temp))*dt/24/3600, icethickness)
 
@@ -289,7 +337,8 @@ for (i in 2:nx){
 }
 
 
-time =  startingDate + seq(1, ncol(temp), 1) * dt
+
+
 avgtemp = as.data.frame(avgtemp)
 colnames(avgtemp) = c('time', 'epi', 'hyp', 'tot', 'stratFlag', 'thermoclineDep')
 
