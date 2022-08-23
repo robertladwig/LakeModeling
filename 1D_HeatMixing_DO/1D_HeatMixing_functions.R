@@ -145,8 +145,8 @@ latent <- function(Tair, Twater, Uw, p2, pa, ea, RH){ # evaporation / latent hea
   fu = 4.4 + 1.82 * Uw + 0.26 *(Twater - Tair)
   fw = 0.61 * (1 + 10^(-6) * Pressure * (4.5 + 6 * 10^(-5) * Twater**2))
   ew = fw * 10 * ((0.7859+0.03477* Twater)/(1+0.00412* Twater))
-  latent = fu * p2 * (ew - ea)# * 1.33) #* 1/6
-  return((-1) * latent)
+  latent = fu * p2 * (ew - ea) * 0.9# * 1.33) #* 1/6
+  return((-1) * latent * 0.8)
 }
 
 # https://www.r-bloggers.com/2017/08/the-trapezoidal-rule-of-numerical-integration-in-r/
@@ -313,6 +313,11 @@ run_thermalmodel <- function(u, startTime, endTime,
   mix.z <- rep(NA, length = N_steps)
   Him <- rep(NA, length = N_steps)
   dom <- matrix(NA, ncol =N_steps, nrow = nx)
+  SW <- rep(NA, length = N_steps)
+  LW_in <- rep(NA, length = N_steps)
+  LW_out <- rep(NA, length = N_steps)
+  LAT <- rep(NA, length = N_steps)
+  SEN <- rep(NA, length = N_steps)
   if (pgdl_mode == 'on'){
     um_diff <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
     um_mix <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
@@ -368,7 +373,15 @@ run_thermalmodel <- function(u, startTime, endTime,
             backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
             latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n], RH = daily_meteo["RH",n]) + 
             sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n]))
-
+    
+    
+    SW[n] <- absorp * daily_meteo["Jsw",n] 
+    LW_in[n] <- longwave(cc = daily_meteo["CC",n], sigma = sigma, Tair = daily_meteo["Tair",n], ea = daily_meteo["ea",n], emissivity = emissivity, Jlw = daily_meteo["Jlw",n])
+    LW_out[n] <- backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) 
+    LAT[n] <- latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n], RH = daily_meteo["RH",n]) 
+    SEN[n] <- sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n])
+    
+    
     # integration through composite trapezoidal rule
     # dn = 1e5
     # a = n - dt
@@ -512,7 +525,7 @@ run_thermalmodel <- function(u, startTime, endTime,
       
       do[nx] = don[nx] +
         (Fvol/86400) * dt * part_volume[nx] +
-        (- area[nx] * Fred/86400 - area[nx] * (Do2)/delta_DBL * don[nx]) * dt/volume[nx]
+        (- area[nx] * Fred/86400 - bbl_area[nx] * (Do2)/delta_DBL * don[nx]) * dt/volume[nx]
       
       do[which(do < 0)] = 0
       # do[which(do > (14.7 - 0.0017 * 4800) * exp(-0.0225*u))] = (14.7 - 0.0017 * 4800) * exp(-0.0225*u)
@@ -673,6 +686,7 @@ run_thermalmodel <- function(u, startTime, endTime,
     x = (dt/86400) / icep
     iceT = iceT * (1 - x) + u[1] * x
     Him[ n] <- Hi
+    
     if ((iceT <= 0) == TRUE & Hi < Ice_min){
       # if (any(u <= 0) == TRUE){
       supercooled <- which(u < 0)
@@ -808,7 +822,12 @@ run_thermalmodel <- function(u, startTime, endTime,
              'endtime' = endTime,
              'average' = df.avg.sim,
              'dissoxygen' = dom,
-             'icethickness_matrix' = Him)
+             'icethickness_matrix' = Him,
+             'SW' = SW,
+             'LW_in' = LW_in,
+             'LW_out' = LW_out,
+             'LAT' = LAT,
+             'SEN' = SEN)
   if (pgdl_mode == 'on'){
     dat = list('temp'  = um,
                'diff' = kzm,

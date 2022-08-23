@@ -19,7 +19,7 @@ library(lubridate)
 
 source('1D_HeatMixing_functions.R')
 
-# Sky Pond
+# Loch
 # https://github.com/bellaoleksy/FABs-DO-concept
 
 ## lake configurations
@@ -60,25 +60,33 @@ dat <- read_csv('bc/WY1992to2019_LochVale_Climate.csv')
 
 meteo <- read_csv('FABs-DO-concept/data/WY2016to2022_LochVale_WX.csv')
 idx <- na.contiguous(meteo$SWin)
+meteo$datetime <-  (as.POSIXct((meteo$dateTime),
+                               format = '%m/%d/%y %H:%M'))
+# sum(is.na(as.POSIXct((a$dateTime),
+#            format = '%m/%d/%y %H:%M', tz = 'UTC')))
 meteo <- meteo[match( as.POSIXct(as.Date(min(df_obs$datetime))), (as.POSIXct((meteo$dateTime),
                                                                              format = '%m/%d/%y %H:%M'))):
                  match( as.POSIXct(as.Date(max(df_obs$datetime))), (as.POSIXct((meteo$dateTime),
                                                                                format = '%m/%d/%y %H:%M'))) ,]
-range_meteo <- range(as.POSIXct((meteo$dateTime),  format = '%m/%d/%y %H:%M'))
+meteo$datetime[which(is.na(meteo$datetime))] <- lubridate::dmy_hm(meteo$dateTime[which(is.na(meteo$datetime))])
+range_meteo <- range(as.POSIXct((meteo$dateTime),  format = '%m/%d/%y %H:%M'), na.rm = T)
 
 interpolated_sw <- approx(x = as.numeric(as.POSIXct((dat$timestamp), format = '%Y/%m/%d %H:%M:%S')), 
                           y = dat$SWin,
-                               xout = as.numeric(as.POSIXct((meteo$dateTime),  format = '%m/%d/%y %H:%M')), rule = 2)$y
+                          xout = meteo$datetime, rule = 2)$y
 interpolated_rh <- approx(x = as.numeric(as.POSIXct((dat$timestamp),format = '%Y/%m/%d %H:%M:%S')), 
                           y = dat$RH,
-                          xout = as.numeric(as.POSIXct((meteo$dateTime),format = '%m/%d/%y %H:%M')), rule = 2)$y
+                          xout = meteo$datetime, rule = 2)$y
 interpolated_lw <- approx(x = as.numeric(as.POSIXct((dat$timestamp),format = '%Y/%m/%d %H:%M:%S')), 
                           y = dat$LWin,
-                          xout = as.numeric(as.POSIXct((meteo$dateTime),format = '%m/%d/%y %H:%M')), rule = 2)$y
+                          xout = meteo$datetime, rule = 2)$y
 interpolated_airt <- approx(x = as.numeric(as.POSIXct((meteo$dateTime),format = '%m/%d/%y %H:%M')), 
                           y = meteo$T_air,
-                          xout = as.numeric(as.POSIXct((meteo$dateTime),format = '%m/%d/%y %H:%M')), rule = 2)$y
-
+                          xout = meteo$datetime, rule = 2)$y
+interpolated_sw <- zoo::na.approx(interpolated_sw)
+interpolated_rh <- zoo::na.approx(interpolated_rh)
+interpolated_lw <- zoo::na.approx(interpolated_lw)
+interpolated_airt <- zoo::na.approx(interpolated_airt)
 
 # airT <- read_csv('bc/mainwx_airT_2m_6m_daily_19821001_20180118.csv') 
 # airT$date <- as.Date(airT$date, format = '%m/%d/%y')
@@ -97,15 +105,15 @@ colnames(df) = c("datetime","Shortwave_Radiation_Downwelling_wattPerMeterSquared
                 "Ten_Meter_Elevation_Wind_Speed_meterPerSecond",
                 "Precipitation_millimeterPerDay", "Snowfall_millimeterPerDay",
                 "Surface_Level_Barometric_Pressure_pascal")
-df$Shortwave_Radiation_Downwelling_wattPerMeterSquared <-interpolated_sw #/ 2.16
+df$Shortwave_Radiation_Downwelling_wattPerMeterSquared <-interpolated_sw #* 1.3#/ 2.16
 df$Ten_Meter_Elevation_Wind_Speed_meterPerSecond <- (meteo$WSpd)
-df$Air_Temperature_celsius <- interpolated_airt * 0.5
+df$Air_Temperature_celsius <- interpolated_airt * 1.
 df$Relative_Humidity_percent <- interpolated_rh
 df$Surface_Level_Barometric_Pressure_pascal = 98393
 df$Longwave_Radiation_Downwelling_wattPerMeterSquared = interpolated_lw
 df$Precipitation_millimeterPerDay = -999
 df$Snowfall_millimeterPerDay =-999
-df$datetime = as.POSIXct((meteo$dateTime), format = '%m/%d/%y %H:%M')
+df$datetime = meteo$datetime
 
 write_csv(x = df, file = 'bc/LakeEnsemblR_meteo_standard.csv')
 
@@ -186,11 +194,20 @@ icethickness <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                          nrow = 1)
 icelog <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                        nrow = 1)
-
+SW <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+                       nrow = 1)
+LW_in <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+                       nrow = 1)
+LW_out <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+                       nrow = 1)
+LAT <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+                       nrow = 1)
+SEN <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+                       nrow = 1)
 
 peri_kd <- rep(0, length( hyps_all[[2]]))
-peri_kd[length(peri_kd)] = 0.8
-km = peri_kd * 0# 0 * peri_kd
+peri_kd[length(peri_kd)] = 1.5#0.8
+km = peri_kd #* 0# 0 * peri_kd
 
 do_ini = (14.7 - 0.0017 * 4800) * exp(-0.0225*u_ini)
 do_ini = initial_profile(initfile = 'bc/obs_do.txt', nx = nx, dx = dx,
@@ -220,7 +237,7 @@ for (i in 1:total_runtime){
     endTime = hydrodynamic_timestep - 1
     ice = FALSE
     Hi = 0
-    iceT = 20#6
+    iceT = 15#6
     supercooled = 0
     kd_light = 0.3
     matrix_range = max(1, (startTime/dt)):((endTime/dt)+1)
@@ -234,8 +251,8 @@ for (i in 1:total_runtime){
                             Hi = Hi, 
                             iceT = iceT,
                             supercooled = supercooled,
-                           dt_iceon_avg = 0.1, 
-                           Hgeo = 0.1,
+                            dt_iceon_avg = 1.5, 
+                            Hgeo = 0.1,
                             kd_light = kd_light,
                             zmax = zmax,
                             nx = nx,
@@ -246,16 +263,16 @@ for (i in 1:total_runtime){
                             volume = hyps_all[[3]], # volume
                             daily_meteo = meteo[,matrix_range_start:matrix_range_end],
                             # secview = meteo_all[[2]],
-                            Cd = 0.0013,
+                            Cd = 0.0027,
                             pgdl_mode = 'off',
                            scheme = 'implicit',
                            km = km,
                            do = do,
                            Fvol = 0.2, #0.01
-                           Fred = 1.5, #0.005,##0.36,
+                           Fred = 1.5, #1.5, #0.005,##0.36,
                            Do2 = 1.08 * 10^(-4),
                            delta_DBL = 1/1000,
-                           eff_area = seq(from = 1e-10,to = 1e-4,length.out = length(hyps_all[[1]]))
+                           eff_area = seq(from = 1e-10,to = 1e-3,length.out = length(hyps_all[[1]]))
                            #  seq(from = 1e-20,to = 0.0002,length.out = length(hyps_all[[1]]))
                            )
 
@@ -266,6 +283,11 @@ for (i in 1:total_runtime){
   dissoxygen[, matrix_range_start:matrix_range_end] =  res$dissoxygen
   icethickness[, matrix_range] =  res$icethickness_matrix
   icelog[, matrix_range] = res$iceflag
+  SW[, matrix_range] =  res$SW
+  LW_in[, matrix_range] =  res$LW_in
+  LW_out[, matrix_range] =  res$LW_out
+  LAT[, matrix_range] =  res$LAT
+  SEN[, matrix_range] =  res$SEN
   
   average <- res$average %>%
     mutate(datetime = as.POSIXct(startingDate + time),
@@ -275,6 +297,14 @@ for (i in 1:total_runtime){
 
 time =  startingDate + seq(1, ncol(temp), 1) * dt
 
+plot(time, SW, col = 'yellow', type = 'l', ylim = c(-700,700))
+lines(time, LW_in, col = 'darkred')
+lines(time, LW_out, col = 'red')
+lines(time, LAT, col = 'green')
+lines(time, SEN, col = 'blue')
+legend(time[5], 400, legend = c('SW',"LWin","LWout","latent",'sensible'),
+       fill = c('yellow','darkred','red','green','blue'))
+plot(time, SW+LW_in+LW_out+LAT+SEN, col = 'black', type="b")
 
 surf_z = which.min( abs(seq(0, zmax, length = nx)  - min(df_obs$Depth_meter) ))
 bottom_z = which.min( abs(seq(0, zmax, length = nx)  - max(df_obs$Depth_meter) ))
@@ -288,6 +318,11 @@ points(surf_temp$datetime, surf_temp$Water_Temperature_celsius)
 plot(time, temp[bottom_z,], col = 'red', type = 'l', 
      xlab = 'Time (d)', ylab='Temperature (degC)', ylim=c(-10,20), lwd = 2)
 points(bottom_temp$datetime, bottom_temp$Water_Temperature_celsius)
+
+plot(time, temp[surf_z,], col = 'red', type = 'l', 
+     xlab = 'Time (d)', ylab='Temperature (degC)', ylim=c(-10,20), lwd = 2)
+points(surf_temp$datetime, surf_temp$Water_Temperature_celsius)
+lines(time, SW+LW_in+LW_out+LAT+SEN, col = 'black', type="b")
 
 surf_z = which.min( abs(seq(0, zmax, length = nx)  - min( df_obs_do$Depth_meter) ))
 bottom_z = which.min( abs(seq(0, zmax, length = nx)  - max( df_obs_do$Depth_meter) ))
@@ -307,7 +342,7 @@ plot(bottom_temp$datetime, 100 *(calc_dens(bottom_temp$Water_Temperature_celsius
      xlab = 'Time (d)', ylab='Temp)', ylim=c(0,20), lwd = 2) 
 points(bottom_do$datetime, bottom_do$Dissolved_oxygen_gram_per_cubicMeter)
 
-icelog_ts = ifelse(icelog == T,1,0)
+icelog_ts = ifelse(icelog == T, 1, 0)
 plot(seq(1, ncol(temp))*dt/24/3600,icelog_ts)
 
 
@@ -363,7 +398,7 @@ m.df$time <- time
 
 g1 <- ggplot(m.df, aes((time), as.numeric(variable)*dx)) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
-  scale_fill_gradientn(limits = c(-2,15),
+  scale_fill_gradientn(limits = c(-10,25),
                        colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
   theme_minimal()  +xlab('Time') +
   ylab('Depth') +
