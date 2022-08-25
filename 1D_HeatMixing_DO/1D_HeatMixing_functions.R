@@ -300,7 +300,7 @@ run_thermalmodel <- function(u, startTime, endTime,
                              do,
                              Fvol,
                              Fred,
-                             Do2,
+                             Do2 = NA,
                              delta_DBL,
                              eff_area){ # spatial step){
   
@@ -318,6 +318,7 @@ run_thermalmodel <- function(u, startTime, endTime,
   LW_out <- rep(NA, length = N_steps)
   LAT <- rep(NA, length = N_steps)
   SEN <- rep(NA, length = N_steps)
+  sedflux <- rep(NA, length = N_steps)
   if (pgdl_mode == 'on'){
     um_diff <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
     um_mix <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
@@ -511,8 +512,9 @@ run_thermalmodel <- function(u, startTime, endTime,
       
       bbl_area = area * eff_area
       
-      Do2 = exp((-4.410 + (773.8)/(u[nx] + 273.15) - ((506.4)/(u[nx] + 273.15))^2))/1e4
-      #Do2 = 0
+      if (is.na(Do2)){
+        Do2 = exp((-4.410 + (773.8)/(u[nx] + 273.15) - ((506.4)/(u[nx] + 273.15))^2))/1e4
+      }
       
       # all other layers in between
       for (i in 2:(nx-1)){
@@ -525,7 +527,10 @@ run_thermalmodel <- function(u, startTime, endTime,
       
       do[nx] = don[nx] +
         (Fvol/86400) * dt * part_volume[nx] +
-        (- area[nx] * Fred/86400 - bbl_area[nx] * (Do2)/delta_DBL * don[nx]) * dt/volume[nx]
+        (- bbl_area[nx] * Fred/86400  - bbl_area[nx] * (Do2)/delta_DBL * don[nx]) * dt/volume[nx]
+      # 
+      
+      sedflux[ n ] <- (- bbl_area[nx] * Fred/86400  - bbl_area[nx] * (Do2)/delta_DBL * don[nx]) * 1/volume[nx]
       
       do[which(do < 0)] = 0
       # do[which(do > (14.7 - 0.0017 * 4800) * exp(-0.0225*u))] = (14.7 - 0.0017 * 4800) * exp(-0.0225*u)
@@ -685,9 +690,15 @@ run_thermalmodel <- function(u, startTime, endTime,
     icep  = max(dt_iceon_avg,  (dt/86400))
     x = (dt/86400) / icep
     iceT = iceT * (1 - x) + u[1] * x
+
+    # if(Hi < 0){
+    #   Hi = 0
+    # }
+    
     Him[ n] <- Hi
     
-    if ((iceT <= 0) == TRUE & Hi < Ice_min){
+    
+    if ((iceT <= 0) == TRUE & Hi < Ice_min & daily_meteo["Tair",n] <= 0){
       # if (any(u <= 0) == TRUE){
       supercooled <- which(u < 0)
       initEnergy <- sum((0-u[supercooled])*area[supercooled] * dx * 4.18E6)
@@ -703,7 +714,7 @@ run_thermalmodel <- function(u, startTime, endTime,
                                                                      sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n])) )/(1000*333500)))
         } else {
           Tice <-  ((1/(10 * Hi)) * 0 + daily_meteo["Tair",n]) / (1 + (1/(10 * Hi))) 
-          Hi <- min(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
+          Hi <- max(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
         }
       }
       ice = TRUE
@@ -720,7 +731,7 @@ run_thermalmodel <- function(u, startTime, endTime,
                                                                    sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n])) )/(1000*333500))) 
       } else {
         Tice <-  ((1/(10 * Hi)) * 0 +  daily_meteo["Tair",n]) / (1 + (1/(10 * Hi))) 
-        Hi <- min(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
+        Hi <- max(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
       }
       u[supercooled] = 0
       u[1] = 0
@@ -827,7 +838,8 @@ run_thermalmodel <- function(u, startTime, endTime,
              'LW_in' = LW_in,
              'LW_out' = LW_out,
              'LAT' = LAT,
-             'SEN' = SEN)
+             'SEN' = SEN,
+             'SED' = sedflux)
   if (pgdl_mode == 'on'){
     dat = list('temp'  = um,
                'diff' = kzm,
