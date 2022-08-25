@@ -168,6 +168,14 @@ meteo = get_interp_drivers(meteo_all=meteo_all, total_runtime=total_runtime,
 
 
 
+peri_kd <- rep(0, length( hyps_all[[2]]))
+peri_kd[length(peri_kd)] = 12#0.8
+km = peri_kd #* 0# 0 * peri_kd
+volume_bio = 0.25
+area_bio = 3.5
+bbl_area = 0.01
+volume_phy = NA
+
 temp <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
               nrow = nx)
 avgtemp <- matrix(NA, ncol = 6,
@@ -207,10 +215,6 @@ SEN <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                        nrow = 1)
 SED <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
               nrow = 1)
-
-peri_kd <- rep(0, length( hyps_all[[2]]))
-peri_kd[length(peri_kd)] = 2#0.8
-km = peri_kd #* 0# 0 * peri_kd
 
 do_ini = (14.7 - 0.0017 * 4800) * exp(-0.0225*u_ini)
 do_ini = initial_profile(initfile = 'bc/obs_do.txt', nx = nx, dx = dx,
@@ -257,7 +261,7 @@ for (i in 1:total_runtime){
                             dt_iceon_avg = 1.5,#1.5, 
                             Hgeo = 0.1,
                             kd_light = kd_light,
-                            sw_factor = 1.2,
+                            sw_factor = 1.4,
                             zmax = zmax,
                             nx = nx,
                             dt = dt,
@@ -267,16 +271,16 @@ for (i in 1:total_runtime){
                             volume = hyps_all[[3]], # volume
                             daily_meteo = meteo[,matrix_range_start:matrix_range_end],
                             # secview = meteo_all[[2]],
-                            Cd = 0.0013,
+                            Cd = 0.0010,
                             pgdl_mode = 'off',
                             scheme = 'implicit',
                             km = km,
                             do = do,
-                            Fvol = 0.2, #0.01
-                            Fred = 1.5, #1.5, #0.005,##0.36,
-                            Do2 = NA,
+                            Fvol = volume_bio, #0.01
+                            Fred = area_bio, #1.5, #0.005,##0.36,
+                            Do2 = volume_phy,
                             delta_DBL = 1/1000,
-                            eff_area = seq(from = 1e-10,to = 1e-2,length.out = length(hyps_all[[1]]))
+                            eff_area = bbl_area
                             #  seq(from = 1e-20,to = 0.0002,length.out = length(hyps_all[[1]]))
                            )
 
@@ -315,45 +319,55 @@ surf_z = which.min( abs(seq(0, zmax, length = nx)  - min(df_obs$Depth_meter) ))
 bottom_z = which.min( abs(seq(0, zmax, length = nx)  - max(df_obs$Depth_meter) ))
 surf_temp = df_obs %>% filter(Depth_meter == min(Depth_meter))
 bottom_temp = df_obs %>% filter(Depth_meter == max(Depth_meter))
-
-plot(time, temp[surf_z,], col = 'red', type = 'l', 
-     xlab = 'Time (d)', ylab='Temperature (degC)', ylim=c(-0,20), lwd = 2)
-points(surf_temp$datetime, surf_temp$Water_Temperature_celsius)
-lines(time, icethickness * 10, col = 'blue')
-
-plot(time, temp[bottom_z,], col = 'red', type = 'l', 
-     xlab = 'Time (d)', ylab='Temperature (degC)', ylim=c(-0,20), lwd = 2)
-points(bottom_temp$datetime, bottom_temp$Water_Temperature_celsius)
-lines(time, icethickness * 10, col = 'blue')
-
-surf_z = which.min( abs(seq(0, zmax, length = nx)  - min( df_obs_do$Depth_meter) ))
-bottom_z = which.min( abs(seq(0, zmax, length = nx)  - max( df_obs_do$Depth_meter) ))
 surf_do =  df_obs_do %>% filter(Depth_meter == min(Depth_meter))
 bottom_do =  df_obs_do %>% filter(Depth_meter == max(Depth_meter))
 
-plot(time, dissoxygen[surf_z,], col = 'red', type = 'l', 
-     xlab = 'Time (d)', ylab='DO (g/m3)', ylim=c(0,20), lwd = 2)
-points(surf_do$datetime, surf_do$Dissolved_oxygen_gram_per_cubicMeter)
-lines(time, icethickness * 10, col = 'blue')
+df.validation <- data.frame('datetime' = time, 
+                            'swt_sim' = temp[surf_z,],
+                            'bwt_sim' = temp[bottom_z,],
+                            'sdo_sim' = dissoxygen[surf_z,],
+                            'bdo_sim' = dissoxygen[bottom_z,],
+                            'ice_h' = as.numeric(unlist(icethickness)))
 
-plot(time, dissoxygen[bottom_z,], col = 'red', type = 'l', 
-     xlab = 'Time (d)', ylab='DO (g/m3)', ylim=c(-0,20), lwd = 2)
-points(bottom_do$datetime, bottom_do$Dissolved_oxygen_gram_per_cubicMeter)
-lines(time, icethickness * 10, col = 'blue')
-# lines(time, (SW+LW_in+LW_out+LAT+SEN)/1e2, col = 'yellow')
+v1 <- ggplot(df.validation) +
+  geom_line(aes(datetime, swt_sim, group = '0.5 temp.', col = 'sim')) +
+  geom_point(data = surf_temp, aes(datetime, Water_Temperature_celsius, 
+                                   group = '0.5 temp.', col = 'obs')) +
+  geom_line(aes(datetime, ice_h *10 , col = 'ice')) +
+  xlab('') + ylab('Temp. [degC]') +
+  ggtitle('0.5 m Temp.') +
+  theme_minimal()
+v2 <-  ggplot(df.validation) +
+  geom_point(data = bottom_temp, aes(datetime, Water_Temperature_celsius, 
+                                   group = '4.5 temp.', col = 'obs')) +
+  geom_line(aes(datetime, bwt_sim, group = '4.5 temp.', col = 'sim')) +
+  geom_line(aes(datetime, ice_h * 10, col = 'ice')) +
+  xlab('') + ylab('Temp. [degC]') +
+  ggtitle('4.5 m Temp.') +
+  theme_minimal()
+v3 <-  ggplot(df.validation) +
+  geom_point(data = surf_do, aes(datetime, Dissolved_oxygen_gram_per_cubicMeter, 
+                                   group = '0.5 do', col = 'obs')) +
+  geom_line(aes(datetime, sdo_sim, group = '4.5 do', col = 'sim')) +
+  geom_line(aes(datetime, ice_h * 10, col = 'ice')) +
+  xlab('') + ylab('DO [g/m3]') +
+  ggtitle('0.5 m DO') +
+  theme_minimal()
+v4 <-  ggplot(df.validation) +
+  geom_point(data = bottom_do, aes(datetime, Dissolved_oxygen_gram_per_cubicMeter, 
+                                     group = '4.5 do', col = 'obs')) +
+  geom_line(aes(datetime, bdo_sim, group = '4.5 do', col = 'sim')) +
+  geom_line(aes(datetime, ice_h * 10, col = 'ice')) +
+  xlab('') + ylab('DO [g/m3]') +
+  ggtitle('4.5 m DO') +
+  theme_minimal()
+
+(v1 / v2) | (v3 / v4) +  plot_layout(guides = "collect")
 
 plot(time, (-1) * SED * 86400, ylab = 'DO sink g/m3/d')
 
-exp((-4.410 + (773.8)/(4 + 273.15) - ((506.4)/(4 + 273.15))^2))/1e4
-# idx = match(surf_temp$datetime, bottom_temp$datetime)
-# plot(bottom_temp$datetime, 100 *(calc_dens(bottom_temp$Water_Temperature_celsius) -  calc_dens( surf_temp$Water_Temperature_celsius[!is.na(idx)])), col = 'red', type = 'l', 
-#      xlab = 'Time (d)', ylab='Temp)', ylim=c(0,20), lwd = 2) 
-# points(bottom_do$datetime, bottom_do$Dissolved_oxygen_gram_per_cubicMeter)
-
 icelog_ts = ifelse(icelog == T, 1, 0)
 plot(seq(1, ncol(temp))*dt/24/3600,icelog_ts)
-
-
 
 plot(seq(1, ncol(temp))*dt/24/3600, icethickness)
 

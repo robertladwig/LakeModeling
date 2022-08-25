@@ -443,6 +443,7 @@ integrate_agg_fun <- function(dt, y, int_method){
 get_interp_drivers <- function(meteo_all, total_runtime, hydrodynamic_timestep, dt, method="interp", int_method="average",
                                secchi){
   times = seq(1, 1 + total_runtime*hydrodynamic_timestep, dt)
+  meteo = matrix(NA, nrow = 9, ncol = length(times))
   if(method == "interp"){
     meteo[1,] = approx(x = meteo_all[[1]]$dt, 
                        y = meteo_all[[1]]$Shortwave_Radiation_Downwelling_wattPerMeterSquared, 
