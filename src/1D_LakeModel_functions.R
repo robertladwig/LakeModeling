@@ -561,14 +561,7 @@ run_thermalmodel <- function(u, startTime, endTime,
                              dx,
                              daily_meteo,
                              # secview,
-                             pgdl_mode = 'off',
-                             km = 0.2,
-                             do,
-                             Fvol,
-                             Fred,
-                             Do2 = NA,
-                             delta_DBL,
-                             eff_area){ # spatial step){
+                             pgdl_mode = 'off'){ 
   
   N_steps = hydrodynamic_timestep / dt
   um <- matrix(NA, ncol =N_steps, nrow = nx)
@@ -578,13 +571,13 @@ run_thermalmodel <- function(u, startTime, endTime,
   therm.z <- rep(NA, length =N_steps)
   mix.z <- rep(NA, length = N_steps)
   Him <- rep(NA, length = N_steps)
-  dom <- matrix(NA, ncol =N_steps, nrow = nx)
+ 
   SW <- rep(NA, length = N_steps)
   LW_in <- rep(NA, length = N_steps)
   LW_out <- rep(NA, length = N_steps)
   LAT <- rep(NA, length = N_steps)
   SEN <- rep(NA, length = N_steps)
-  sedflux <- rep(NA, length = N_steps)
+
   if (pgdl_mode == 'on'){
     um_diff <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
     um_mix <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
@@ -594,11 +587,7 @@ run_thermalmodel <- function(u, startTime, endTime,
     
     meteo_pgdl <- matrix(NA, ncol = length( seq(startTime, endTime, dt)/dt), nrow = 9)
   }
-  
-  # if (!is.null(kd_light)){
-  #   kd <- approxfun(x = seq(startTime, endTime, 1), y = rep(kd_light, length(seq(startTime, endTime, 1))), method = "linear", rule = 2)
-  # } 
-  
+
   start.time <- Sys.time()
   ## modeling code for vertical 1D mixing and heat transport
   for (n in 1:N_steps){#1:(floor(endTime/dt - startTime/dt))){  #iterate through time 1:floor(nt/dt)
@@ -609,7 +598,6 @@ run_thermalmodel <- function(u, startTime, endTime,
     }
     
     un = u # prior temperature values
-    don = do
     
     if (pgdl_mode == 'on'){
       dens_u_n2 = calc_dens(u) 
@@ -635,21 +623,10 @@ run_thermalmodel <- function(u, startTime, endTime,
       albedo = 0.1
     }
     kzm[, n] <- kzn
-    
-    # 
-    # print(n)
-    # print(daily_meteo["Tair",n])
-    # print(un[1])
-    # print(daily_meteo["Uw",n])
-    # print(daily_meteo["Pa",n])
-    # print(daily_meteo["ea",n])
-    # print(daily_meteo["RH",n]) 
-    # print(area)
-    # print(Cd)
+
     
     ## (1) Heat addition
     # surface heat flux
-    # absorp * daily_meteo["Jsw",n] + 
     Q <- (
             longwave(cc = daily_meteo["CC",n], sigma = sigma, Tair = daily_meteo["Tair",n], ea = daily_meteo["ea",n], emissivity = emissivity, Jlw = daily_meteo["Jlw",n]) + 
             backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
@@ -662,42 +639,13 @@ run_thermalmodel <- function(u, startTime, endTime,
     LAT[n] <- latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n], RH = daily_meteo["RH",n], A = area, Cd = Cd) 
     SEN[n] <- sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n])
     
-    
-    # integration through composite trapezoidal rule
-    # dn = 1e5
-    # a = n - dt
-    # b = n
-    # h <- (b - a) / dn
-    # 
-    # j <- 1:dn - 1
-    # xj <- a + j * h
-    # 
-    # Q <- (absorp *  (h / 2) * (Jsw(a)  + 2 * sum(Jsw(xj) ) + Jsw(b) )  +
-    #         (h / 2) * ( longwave(cc = CC(a), sigma = sigma, Tair = Tair(a), ea = ea(a), emissivity = emissivity, Jlw = Jlw(a))  +
-    #                       2 * sum( longwave(cc = CC(xj), sigma = sigma, Tair = Tair(xj), ea = ea(xj), emissivity = emissivity, Jlw = Jlw(xj)) ) +
-    #                       longwave(cc = CC(b), sigma = sigma, Tair = Tair(b), ea = ea(b), emissivity = emissivity, Jlw = Jlw(b)) ) +
-    #         backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) * dt +
-    #         (h / 2) * (latent(Tair = Tair(a), Twater = un[1], Uw = Uw(a), p2 = p2, pa = Pa(a), ea=ea(a), RH = RH(a)) +
-    #                      2 * sum(latent(Tair = Tair(xj), Twater = un[1], Uw = Uw(xj), p2 = p2, pa = Pa(xj), ea=ea(xj), RH = RH(xj))) +
-    #                      latent(Tair = Tair(b), Twater = un[1], Uw = Uw(b), p2 = p2, pa = Pa(b), ea=ea(b), RH = RH(b))) +
-    #         (h / 2) * (sensible(p2 = p2, B = B, Tair = Tair(a), Twater = un[1], Uw = Uw(a))) +
-    #                      2 * sum(sensible(p2 = p2, B = B, Tair = Tair(xj), Twater = un[1], Uw = Uw(xj))) +
-    #                     sensible(p2 = p2, B = B, Tair = Tair(b), Twater = un[1], Uw = Uw(b)))
-    
+  
     # heat addition over depth
-    H =  (1- albedo) * (daily_meteo["Jsw",n] * sw_factor) * exp(-(kd  + km) *depth) 
+    H =  (1- albedo) * (daily_meteo["Jsw",n] * sw_factor) * exp(-(kd) *depth) 
 
-    # integration through composite trapezoidal rule
-    # H <- (h / 2) * ((1- infra) * (Jsw(a))  * #
-    #                   exp(-(kd(a) ) *seq(dx,nx*dx,length.out=nx))  +
-    #                   2 * sum((1- infra) * (Jsw(xj))  * #
-    #                             exp(-(kd(xj) ) *seq(dx,nx*dx,length.out=nx)) ) +
-    #                   (1- infra) * (Jsw(b))  * #
-    #                   exp(-(kd(b) ) *seq(dx,nx*dx,length.out=nx)) )
-        
     Hg <- (area-lead(area))/dx * Hgeo/(4181 * calc_dens(un)) 
     Hg[nx] <- (area[nx-1]-area[nx])/dx * Hgeo/(4181 * calc_dens(un[nx])) 
-      #min(Hg, na.rm = TRUE)
+
     
     # add heat to all layers
     ## (2) DIFFUSION
@@ -709,22 +657,13 @@ run_thermalmodel <- function(u, startTime, endTime,
            abs(H[1+1]-H[1]) * area[1]/(dx) * 1/(4184 * calc_dens(un[1]) ) +
            Hg[1]) * dt/area[1]
       
-      # integration through composite trapezoidal rule
-      # u[1] = un[1] +
-      #   (Q * area[1]/(dx)*1/(4184 * calc_dens(un[1]) ) +
-      #      abs(H[1+1]-H[1]) * area[1]/(dx) * 1/(4184 * calc_dens(un[1]) )) * 1/area[1]+
-      #      (Hg[1]) * dt/area[1]
 
       # all other layers in between
       for (i in 2:(nx-1)){
         u[i] = un[i] +
           (abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ) +
              Hg[i])* dt/area[i]
-        
-        # integration through composite trapezoidal rule
-        # u[i] = un[i] +
-        #   (abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) )) * 1/area[i]+
-        #      (Hg[i])* dt/area[i]
+
       }
 
       # bottom layer
@@ -732,11 +671,6 @@ run_thermalmodel <- function(u, startTime, endTime,
       (abs(H[nx]-H[nx-1]) * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx])) +
       Hg[nx]/area[nx]) * dt
       
-      # integration through composite trapezoidal ruled
-      # u[nx] = un[nx] +
-      #   (abs(H[nx]-H[nx-1]) * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx]))) +
-      #                                                      (Hg[nx]/area[nx]) * dt
-
       ## (2b) Diffusion by Crank-Nicholson Scheme (CNS)
       j <- length(u)
       y <- array(0, c(j,j))
@@ -771,83 +705,6 @@ run_thermalmodel <- function(u, startTime, endTime,
 
       u  <- solve(y, mn)
       
-      
-      
-      ## (6) OXYGEN DYNAMICS
-      k600 =  k600.2.kGAS.base(k.vachon.base(wnd = daily_meteo["Uw",n], 
-                                                                 lake.area = max(area)),
-                               temperature = u[1], gas = "O2")/86400
-      o2sat = o2.at.sat.base(temp = u[1], altitude = 4800)
-      
-      if (ice){
-        k600 = 1e-4/86400
-      }
-      
-      part_volume <- (volume * 1)/sum(volume)
-      
-      # surface layer
-      do[1] = don[1] +
-        ((Fvol/86400) * dt* part_volume[1] +
-        (k600 * (o2sat - don[1])) * dt/dx * volume[nx])/volume[1]
-      
-      bbl_area = area * eff_area
-      
-      if (is.na(Do2)){
-        Do2 = exp((-4.410 + (773.8)/(u[nx] + 273.15) - ((506.4)/(u[nx] + 273.15))^2))/1e4
-      }
-      
-      # all other layers in between
-      for (i in 2:(nx-1)){
-        do[i] = don[i] +
-          (Fvol/86400) * dt * part_volume[i]#  +
-         # (- area[i] * Fred/86400 - bbl_area[i] * (Do2)/delta_DBL * don[i]) * dt/volume[i]
-      }
-      
-      
-      
-      do[nx] = don[nx] +
-        (Fvol/86400) * dt * part_volume[nx] +
-        (- bbl_area[nx] * Fred/86400  - bbl_area[nx] * (Do2)/delta_DBL * don[nx]) * dt/volume[nx]
-      # 
-      
-      sedflux[ n ] <- (- bbl_area[nx] * Fred/86400  - bbl_area[nx] * (Do2)/delta_DBL * don[nx]) * 1/volume[nx]
-      
-      do[which(do < 0)] = 0
-      # do[which(do > (14.7 - 0.0017 * 4800) * exp(-0.0225*u))] = (14.7 - 0.0017 * 4800) * exp(-0.0225*u)
-      
-      ## (2b) Diffusion by Crank-Nicholson Scheme (CNS)
-      j <- length(don)
-      y <- array(0, c(j,j))
-      
-      # all other layers in between
-      # Linearized heat conservation equation matrix (diffusion only)
-      alpha = (dt/dx**2) * kzn    
-      az <- -alpha #rep(-alpha,j-1  )                                #coefficient for i-1
-      bz <- 2 * (1 + alpha) #rep(2 * (1 + alpha),j)                                                      #coefficient for i
-      cz <- -alpha #rep(-alpha,j-1  )                #coefficient for i+1
-      #Boundary conditions, surface
-      az[1] <- 0
-      #cz(1) remains unchanged
-      bz[1]<- 1 #+ az[1] + (dt/dx**2) * kzn    
-      #Boundary conditions, bottom
-      #az(end) remains unchanged
-      cz[length(cz)] <- 0
-      bz[length(bz)] <- 1 #+ (dt/dx**2) * kzn    + cz[length(cz)]
-      y[0 + 1:(j - 1) * (j + 1)] <- cz[-length(bz)]	# superdiagonal
-      y[1 + 0:(j - 1) * (j + 1)] <- bz	# diagonal
-      y[2 + 0:(j - 2) * (j + 1)] <- az[-1] 	# subdiagonal
-      
-      y[1,2] <- 0#- 2 * (dt/dx**2) * kzn[1]           
-      y[nrow(y), (ncol(y)-1)] = 0#-2 * (dt/dx**2) * kzn[ncol(y)]       
-      
-      mn <- rep(0, j)
-      mn[1] = do[1]
-      mn[j] = do[j]
-      for (g in 2:(j-1)){
-        mn[g] = alpha[g] * do[g-1] + 2 * (1-alpha[g])*do[g] + alpha[g] * do[g+1]
-      }
-      
-      do  <- solve(y, mn)
     }
     
 
@@ -914,7 +771,6 @@ run_thermalmodel <- function(u, startTime, endTime,
         break
       } else if (dep>1 & PE < KE ){
         u[(dep-1):dep] = (u[(dep-1):dep] %*% volume[(dep-1):dep])/sum(volume[(dep-1):dep])
-        do[(dep-1):dep] = (do[(dep-1):dep] %*% volume[(dep-1):dep])/sum(volume[(dep-1):dep])
       }
       maxdep = dep
     }
@@ -940,7 +796,6 @@ run_thermalmodel <- function(u, startTime, endTime,
       for (dep in 1:(nx-1)){
         if (dens_u[dep+1] < dens_u[dep] & abs(dens_u[dep+1] - dens_u[dep]) >= densThresh){
           u[dep:(dep+1)] = (u[dep:(dep+1)] %*% volume[dep:(dep+1)])/sum(volume[dep:(dep+1)]) #mean(u[dep:(dep+1)])
-          do[dep:(dep+1)] = (do[dep:(dep+1)] %*% volume[dep:(dep+1)])/sum(volume[dep:(dep+1)])
           break
         }
       }
@@ -1026,7 +881,6 @@ run_thermalmodel <- function(u, startTime, endTime,
       Him[n] = Hi
     }
 
-    dom[, n] <- do
     n2m[, n] <- n2
     um[, n] <- u
     if (pgdl_mode == 'on'){
@@ -1112,14 +966,12 @@ run_thermalmodel <- function(u, startTime, endTime,
              'thermoclinedepth' = therm.z,
              'endtime' = endTime,
              'average' = df.avg.sim,
-             'dissoxygen' = dom,
              'icethickness_matrix' = Him,
              'SW' = SW,
              'LW_in' = LW_in,
              'LW_out' = LW_out,
              'LAT' = LAT,
-             'SEN' = SEN,
-             'SED' = sedflux)
+             'SEN' = SEN)
   if (pgdl_mode == 'on'){
     dat = list('temp'  = um,
                'diff' = kzm,

@@ -70,7 +70,7 @@ meteo <- meteo[match( as.POSIXct(as.Date(min(df_obs$datetime))), (as.POSIXct((me
                                                                                format = '%m/%d/%y %H:%M'))) ,]
 meteo$datetime[which(is.na(meteo$datetime))] <- lubridate::dmy_hm(meteo$dateTime[which(is.na(meteo$datetime))])
 range_meteo <- range(as.POSIXct((meteo$dateTime),  format = '%m/%d/%y %H:%M'), na.rm = T)
-range_meteo[1] <- as.POSIXct('2017-07-01 UTC')
+# range_meteo[1] <- as.POSIXct('2017-07-01 UTC')
 
 interpolated_sw <- approx(x = as.numeric(as.POSIXct((dat$timestamp), format = '%Y/%m/%d %H:%M:%S')), 
                           y = dat$SWin,
@@ -257,6 +257,7 @@ for (i in 1:total_runtime){
                             dt_iceon_avg = 1.5,#1.5, 
                             Hgeo = 0.1,
                             kd_light = kd_light,
+                            sw_factor = 1.2,
                             zmax = zmax,
                             nx = nx,
                             dt = dt,
@@ -266,17 +267,17 @@ for (i in 1:total_runtime){
                             volume = hyps_all[[3]], # volume
                             daily_meteo = meteo[,matrix_range_start:matrix_range_end],
                             # secview = meteo_all[[2]],
-                            Cd = 0.0037,
+                            Cd = 0.0013,
                             pgdl_mode = 'off',
-                           scheme = 'implicit',
-                           km = km,
-                           do = do,
-                           Fvol = 0.2, #0.01
-                           Fred = 1.5, #1.5, #0.005,##0.36,
-                           Do2 = NA,
-                           delta_DBL = 1/1000,
-                           eff_area = seq(from = 1e-10,to = 1e-2,length.out = length(hyps_all[[1]]))
-                           #  seq(from = 1e-20,to = 0.0002,length.out = length(hyps_all[[1]]))
+                            scheme = 'implicit',
+                            km = km,
+                            do = do,
+                            Fvol = 0.2, #0.01
+                            Fred = 1.5, #1.5, #0.005,##0.36,
+                            Do2 = NA,
+                            delta_DBL = 1/1000,
+                            eff_area = seq(from = 1e-10,to = 1e-2,length.out = length(hyps_all[[1]]))
+                            #  seq(from = 1e-20,to = 0.0002,length.out = length(hyps_all[[1]]))
                            )
 
   temp[, matrix_range_start:matrix_range_end] =  res$temp
