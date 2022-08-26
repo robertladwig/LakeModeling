@@ -61,7 +61,8 @@ meteo_output <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                nrow = 9)
 buoyancy <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                nrow = nx)
-
+icethickness <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+                       nrow = 1)
 # do the meteo interpolation all at the start
 meteo = get_interp_drivers(meteo_all=meteo_all, total_runtime=total_runtime, 
                            hydrodynamic_timestep=hydrodynamic_timestep, dt=dt, method="integrate")
@@ -102,6 +103,7 @@ for (i in 1:total_runtime){
                             iceT = iceT,
                             supercooled = supercooled,
                             kd_light = kd_light,
+                            sw_factor = 1.5,
                             zmax = zmax,
                             nx = nx,
                             dt = dt,
@@ -126,6 +128,7 @@ for (i in 1:total_runtime){
   buoyancy[, matrix_range_start:matrix_range_end] =  res$temp
   meteo_output[, matrix_range_start:matrix_range_end] =  res$meteo_input
   buoyancy[, matrix_range_start:matrix_range_end] = res$buoyancy_pgdl
+  icethickness[, matrix_range] =  res$icethickness_matrix
   
   average <- res$average %>%
     mutate(datetime = as.POSIXct(startingDate + time),
@@ -146,6 +149,8 @@ for (i in 2:nx){
 time =  startingDate + seq(1, ncol(temp), 1) * dt
 avgtemp = as.data.frame(avgtemp)
 colnames(avgtemp) = c('time', 'epi', 'hyp', 'tot', 'stratFlag', 'thermoclineDep')
+avgtemp$time = time
+
 
 ggplot(avgtemp) +
   geom_line(aes(time, epi, col = 'epilimnion')) +
@@ -161,6 +166,9 @@ ggplot(avgtemp) +
   scale_y_reverse() +
   theme_minimal() 
 
+df.ice = data.frame('time' = time,
+                    'ice_h' = (as.numeric(unlist(icethickness))))
+
 df <- data.frame(cbind(time, t(temp)) )
 colnames(df) <- c("time", as.character(paste0(seq(1,nrow(temp)))))
 m.df <- reshape2::melt(df, "time")
@@ -170,10 +178,14 @@ ggplot(m.df, aes((time), as.numeric(variable))) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
   scale_fill_gradientn(limits = c(-2,35),
                        colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
+  geom_line(data = avgtemp, aes(time, thermoclineDep, col = 'thermoclien depth'), linetype = 'dashed', col = 'brown') +
+  geom_line(data = df.ice, aes(time, ice_h * (-1), col = 'ice thickness'), linetype = 'solid', col = 'darkblue') +
   theme_minimal()  +xlab('Time') +
-  ylab('Depth') +
+  ylab('Depth [m]') +
   labs(fill = 'Temp [degC]')+
   scale_y_reverse() 
+ggsave(filename = 'heatmap.png', width = 15, height = 8, units = 'in')
+
 
 # save data for PGDL
 df <- data.frame(cbind(time, t(temp)) )
