@@ -14,7 +14,7 @@ eddy_diffusivity <-function(rho, depth, g, rho_0, ice, area){
   #   buoy[i] = ( abs(rho[i+1] - rho[i]) / (depth[i+1] - depth[i]) * g/rho_0 )
   # }
   buoy[nx] = ( abs(rho[nx-1] - rho[nx]) / abs(depth[nx-1] - depth[nx]) * 
-                     g/rho_0 )
+                 g/rho_0 )
   
   low_values_flags = buoy < 7e-5  # Where values are low
   buoy[low_values_flags] = 7e-5
@@ -76,7 +76,7 @@ provide_meteorology <- function(meteofile, secchifile,
   } else {
     secview = NULL
   }
-
+  
   
   return(list(daily_meteo, secview))
 }
@@ -131,53 +131,14 @@ backscattering <- function(emissivity, sigma, Twater, eps){ # backscattering lon
   back = (eps * sigma * (Twater )^4) 
   return((-1) * back)
 }
-sensible <- function(p2, B, Tair, Twater, Uw){ # convection / sensible heat
-  Twater = Twater + 273.15
-  Tair = Tair + 273.15
-  fu = 4.4 + 1.82 * Uw + 0.26 *(Twater - Tair)
-  sensible <- ( p2 * B * fu * (Twater - Tair)) 
-  return((-1) * sensible)
-}
-# latent <- function(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.013){ # evaporation / latent heat
-# Goudsmit
+# sensible <- function(p2, B, Tair, Twater, Uw){ # convection / sensible heat
 #   Twater = Twater + 273.15
 #   Tair = Tair + 273.15
-#   Pressure = pa / 100
 #   fu = 4.4 + 1.82 * Uw + 0.26 *(Twater - Tair)
-#   fw = 0.61 * (1 + 10^(-6) * Pressure * (4.5 + 6 * 10^(-5) * Twater**2))
-#   ew = fw * 10 * ((0.7859+0.03477* Twater)/(1+0.00412* Twater))
-#   latent = fu * p2 * (ew - ea) # * 1.33) #* 1/6
-#   return((-1) * latent * 0.8)
+#   sensible <- ( p2 * B * fu * (Twater - Tair)) 
+#   return((-1) * sensible)
 # }
-# latent <- function(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.013){ # evaporation / latent heat HOSTETLER
-#   # https://ascelibrary.org/doi/epdf/10.1061/JYCEAJ.0004424
-#   
-#   A = max(A)
-#   Lv = 2264 # J/g
-#   Pressure = pa / 100
-#   Nmt = 3.367 * 10^(-9) * A^(-0.05)
-#   tk = 1 - (373.15 / (Twater + 273.15))
-#   tka =  1 - (373.15 / (Tair + 273.15))
-#   eo = 101.325 * exp(13.3185 * tk - 1.976 * tk^2 - 0.6445 * tk^3 - 0.1229 * tk^4)
-#   es = 101.325 * exp(13.3185 * tka - 1.976 * tka^2 - 0.6445 * tka^3 - 0.1229 * tka^4) * RH/100
-#   
-#   latent = Lv * Nmt * Uw * (eo - es)
-#   
-#   b0 = 1.84 * 10^(-7)
-#   
-#   Tvwater = Twater / (1 - 0.378 * es /Pressure)
-#   Tvair = Tair / (1 - 0.378 * ea/ Pressure)
-#   
-#   Tvirtual = (Tvwater - Tvair)
-#   if (Tvirtual < 0){
-#     Tvirtual = 0
-#   }
-#   
-#   latent = (b0 * (Tvirtual)^(1/3) + Nmt * Uw) * (eo - es)
-#   
-#   return((-1) * latent)
-# }
-latent <- function(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.013){ # evaporation / latent heat
+sensible <- function(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.013){ # evaporation / latent heat
   # https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2009JD012839
   
   # Tair =0
@@ -216,33 +177,33 @@ latent <- function(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.013){ # evaporati
     
     return(psim) 
   }
-
+  
   
   #-------------------------------------------------------
   PSITE = function(zeta){
-  # Function to compute stability functions for sensible and latent heat
-  if (zeta < 0.0){
-    X = (1 - 16*zeta)^0.25; 
-    psite = 2*log((1 + X*X)/2);
-  }
-  else if (zeta > 0.0)  { # Stable case
-    if (zeta > 0.5)   {   
-      if (zeta > 10.0) {
-        psite = log(zeta) - 0.76*zeta - 12.093;
+    # Function to compute stability functions for sensible and latent heat
+    if (zeta < 0.0){
+      X = (1 - 16*zeta)^0.25; 
+      psite = 2*log((1 + X*X)/2);
+    }
+    else if (zeta > 0.0)  { # Stable case
+      if (zeta > 0.5)   {   
+        if (zeta > 10.0) {
+          psite = log(zeta) - 0.76*zeta - 12.093;
+        }
+        else{
+          psite = 0.5/(zeta*zeta) - 4.25/zeta - 7.0*log(zeta) - 0.852; 
+        }
       }
-      else{
-        psite = 0.5/(zeta*zeta) - 4.25/zeta - 7.0*log(zeta) - 0.852; 
+      else { 
+        psite = -5*zeta ;
       }
     }
-    else { 
-      psite = -5*zeta ;
+    else {
+      psite = 0.0;
     }
+    return(psite)
   }
-  else {
-    psite = 0.0;
-  }
-  return(psite)
-}
   
   const_SpecificHeatAir = 1005;           # Units : J kg-1 K-1
   const_vonKarman = 0.41;                 # Units : none
@@ -311,7 +272,7 @@ latent <- function(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.013){ # evaporati
       z_0_prev[i1] = dummy; # Used to control while loop
     }
   }
-
+  
   # Step 4d - Compute initial neutral drag coefficient
   C_DN = (u_star^2)/(U_Z^2); # Units - none
   # Step 4e - Compute roughness Reynolds number 
@@ -391,20 +352,293 @@ latent <- function(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.013){ # evaporati
       L = (-rho_a[i1]*u_star[i1]^3*T_v[i1])/(const_vonKarman*const_Gravity*(H[i1]/const_SpecificHeatAir + 0.61*E[i1]*(T[i1]+273.16)/L_v[i1]));
       L_prev = dummy; # Used to control while loop
     } # Converge when L within 0.0001# or previous L
-
+    
   } # Need to iterate separately for each record
- 
-
-### End step 5
-
-# Take real values to remove any complex values that arise from missing data or NaN.
+  
+  
+  ### End step 5
+  
+  # Take real values to remove any complex values that arise from missing data or NaN.
   C_D=Re(C_D);
   C_E=Re(C_E);
   C_H=Re(C_H);
   z_0=Re(z_0);
   z_E=Re(z_E);
   z_T=Re(z_T);
-
+  
+  # Compute evaporation [mm/day]
+  Evap = 86400*1000*E/(rho_w*L_v);
+  
+  sensible = H
+  return( sensible * (-1))
+}
+# latent <- function(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.013){ # evaporation / latent heat
+# Goudsmit
+#   Twater = Twater + 273.15
+#   Tair = Tair + 273.15
+#   Pressure = pa / 100
+#   fu = 4.4 + 1.82 * Uw + 0.26 *(Twater - Tair)
+#   fw = 0.61 * (1 + 10^(-6) * Pressure * (4.5 + 6 * 10^(-5) * Twater**2))
+#   ew = fw * 10 * ((0.7859+0.03477* Twater)/(1+0.00412* Twater))
+#   latent = fu * p2 * (ew - ea) # * 1.33) #* 1/6
+#   return((-1) * latent * 0.8)
+# }
+# latent <- function(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.013){ # evaporation / latent heat HOSTETLER
+#   # https://ascelibrary.org/doi/epdf/10.1061/JYCEAJ.0004424
+#   
+#   A = max(A)
+#   Lv = 2264 # J/g
+#   Pressure = pa / 100
+#   Nmt = 3.367 * 10^(-9) * A^(-0.05)
+#   tk = 1 - (373.15 / (Twater + 273.15))
+#   tka =  1 - (373.15 / (Tair + 273.15))
+#   eo = 101.325 * exp(13.3185 * tk - 1.976 * tk^2 - 0.6445 * tk^3 - 0.1229 * tk^4)
+#   es = 101.325 * exp(13.3185 * tka - 1.976 * tka^2 - 0.6445 * tka^3 - 0.1229 * tka^4) * RH/100
+#   
+#   latent = Lv * Nmt * Uw * (eo - es)
+#   
+#   b0 = 1.84 * 10^(-7)
+#   
+#   Tvwater = Twater / (1 - 0.378 * es /Pressure)
+#   Tvair = Tair / (1 - 0.378 * ea/ Pressure)
+#   
+#   Tvirtual = (Tvwater - Tvair)
+#   if (Tvirtual < 0){
+#     Tvirtual = 0
+#   }
+#   
+#   latent = (b0 * (Tvirtual)^(1/3) + Nmt * Uw) * (eo - es)
+#   
+#   return((-1) * latent)
+# }
+latent <- function(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.013){ # evaporation / latent heat
+  # https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2009JD012839
+  
+  # Tair =0
+  # Twater = 0
+  # Uw = 0.01
+  # pa = 98393
+  # ea = 6.079572
+  # A = 31861
+  # Cd = 0.0037
+  # 
+  # Function list, used by script above
+  #-------------------------------------------------------
+  PSIM <- function(zeta){
+    # Function to compute stability functions for momentum
+    if (zeta < 0.0){
+      X = (1 - 16*zeta)^0.25; 
+      psim = 2*log((1 + X)/2) + log((1 + X*X)/2)-2*atan(X) + pi/2;      
+    }
+    else if(zeta > 0.0){
+      if (zeta > 0.5){
+        if (zeta > 10.0){
+          psim = log(zeta) - 0.76*zeta - 12.093;
+        }
+        else{
+          psim = 0.5/(zeta*zeta) - 4.25/zeta - 7.0*log(zeta) - 0.852; 
+        }
+      }
+      else {
+        psim = -5*zeta ;
+      }
+      
+    }   # Stable case
+    else {
+      psim = 0.0;
+    }
+    
+    return(psim) 
+  }
+  
+  
+  #-------------------------------------------------------
+  PSITE = function(zeta){
+    # Function to compute stability functions for sensible and latent heat
+    if (zeta < 0.0){
+      X = (1 - 16*zeta)^0.25; 
+      psite = 2*log((1 + X*X)/2);
+    }
+    else if (zeta > 0.0)  { # Stable case
+      if (zeta > 0.5)   {   
+        if (zeta > 10.0) {
+          psite = log(zeta) - 0.76*zeta - 12.093;
+        }
+        else{
+          psite = 0.5/(zeta*zeta) - 4.25/zeta - 7.0*log(zeta) - 0.852; 
+        }
+      }
+      else { 
+        psite = -5*zeta ;
+      }
+    }
+    else {
+      psite = 0.0;
+    }
+    return(psite)
+  }
+  
+  const_SpecificHeatAir = 1005;           # Units : J kg-1 K-1
+  const_vonKarman = 0.41;                 # Units : none
+  const_Gravity = 9.81;                   # Units : m s-2
+  const_Charnock = Cd;   
+  
+  U_Z = Uw
+  if (Uw <= 0){
+    U_Z = 1e-3
+  }
+  T = Tair
+  if (Tair == 0){
+    T = runif(1, min = 1e-7, max = 1e-5)
+  }
+  T0 = Twater
+  if (Twater == 0){
+    T0 = runif(1, min = 1e-7, max = 1e-5)
+  }
+  Rh=RH
+  p=pa/100
+  z=2
+  
+  # Step 2c - Compute saturated vapour pressure at air temperature
+  e_s = 6.11*exp(17.27*T/(237.3+T)); # Units : mb ##REF##
+  # Step 2d - Compute vapour pressure
+  e_a = Rh*e_s/100; # Units : mb
+  ### End step 2
+  
+  ### Step 3 - Compute other values used in flux calculations
+  # Step 3a - Compute specific humidity
+  q_z = 0.622*e_a/p; # Units: kg kg-1
+  # Step 3b - Compute saturated vapour pressure at water temperature
+  e_sat = 6.11*exp(17.27*T0/(237.3+T0)); # Units : mb ##REF## 
+  # Step 3c - Compute humidity at saturation (Henderson-Sellers 1986 eqn 36)
+  q_s = 0.622*e_sat/p; # Units: kg kg-1
+  # Step 3d - Compute latent heat of vaporisation
+  L_v = 2.501e6-2370*T0; # Units : J kg-1 ** EQUATION FROM PIET ##REF##
+  # Step 3e - Compute gas constant for moist air
+  R_a = 287*(1+0.608*q_z); # Units : J kg-1 K-1
+  # Step 3f - Compute air density
+  rho_a = 100*p/(R_a*(T+273.16)); # Units : kg m-3
+  # Step 3g - Compute kinematic viscosity of air 
+  v = (1./rho_a)*(4.94e-8*T + 1.7184e-5); # Units : m2 s-1
+  # Step 3h - Compute virtual air temperature and virtual air-water temperature difference
+  T_v = (T+273.16)*(1+0.61*q_z); # Units - K
+  T_ov = (T0+273.16)*(1+0.61*q_s); # Units - K
+  del_theta = T_ov - T_v;
+  # Step 3h - Compute water density 
+  rho_w = 1000*(1-1.9549*0.00001*abs(T0-3.84)^1.68);
+  ### End step 3
+  
+  # step 4
+  u_star = U_Z *sqrt(0.00104+0.0015/(1+exp((-U_Z+12.5)/1.56))); # Amorocho and DeVries, initialise ustar using U_Z
+  
+  if (u_star == 0){
+    u_star = 1e-6
+  }
+  
+  z_0 = (const_Charnock*u_star^2./const_Gravity) + (0.11*v/u_star); 
+  z_0_prev=z_0*1.1; # To initiate the iteration
+  for (i1 in 1:length(U_Z)){
+    while (abs((z_0[i1] - z_0_prev[i1]))/abs(z_0_prev[i1]) > 0.000001){ # Converge when z_0 within 0.0001# of previous value
+      u_star[i1]=const_vonKarman*U_Z[i1]/(log(z/z_0[i1]));  # Compute u_star
+      dummy = z_0[i1]; # Used to control while loop
+      z_0[i1]=(const_Charnock*u_star[i1]^2./const_Gravity) + (0.11*v[i1]/u_star[i1]); # Compute new roughness length
+      z_0_prev[i1] = dummy; # Used to control while loop
+    }
+  }
+  
+  # Step 4d - Compute initial neutral drag coefficient
+  C_DN = (u_star^2)/(U_Z^2); # Units - none
+  # Step 4e - Compute roughness Reynolds number 
+  Re_star = u_star*z_0/v; # Units - none
+  # Step 4f - Compute initial roughness length for temperature
+  z_T = z_0*exp(-2.67*(Re_star)^(1/4) + 2.57); # Units - m
+  z_T = Re(z_T); # Get real components, and NaN can create imag component despite no data
+  # Step 4g - Compute initial roughness length for vapour 
+  z_E = z_0*exp(-2.67*(Re_star)^(1/4) + 2.57); # Units - m
+  z_E = Re(z_E); # Get real components, and NaN can create imag component despite no data
+  # Step 4h - Compute initial neutral sensible heat transfer coefficient 
+  C_HN = const_vonKarman*sqrt(C_DN)/(log(z/z_T));
+  # Step 4i - Compute initial neutral latent heat transfer coefficient
+  C_EN = const_vonKarman*sqrt(C_DN)/(log(z/z_E));
+  ### End step 4
+  
+  ### Step 5 - Start iteration to compute corrections for atmospheric stability
+  for (i1 in 1:length(U_Z)){
+    # Step 5a - Compute initial sensible heat flux based on neutral coefficients
+    H_initial = rho_a[i1]*const_SpecificHeatAir*C_HN[i1]*U_Z[i1]*(T0[i1]-T[i1]); # Units : W m-2
+    # Step 5b - Compute initial latent heat flux based on neutral coefficients
+    E_initial = rho_a[i1]*L_v[i1]*C_EN[i1]*U_Z[i1]*(q_s[i1]-q_z[i1]); # Units : W m-2
+    # Step 5c - Compute initial Monin-Obukhov length
+    L_initial = (-rho_a[i1]*u_star[i1]^3*T_v[i1])/(const_vonKarman*const_Gravity*(H_initial[i1]/const_SpecificHeatAir + 0.61*E_initial[i1]*(T[i1]+273.16)/L_v[i1])); # Units - m
+    # Step 5d - Compute initial stability parameter
+    zeta_initial = z/L_initial[i1];
+    # Step 5e - Compute initial stability function
+    psim=PSIM(zeta_initial[i1]); # Momentum stability function
+    psit=PSITE(zeta_initial[i1]); # Sensible heat stability function
+    psie=PSITE(zeta_initial[i1]); # Latent heat stability function
+    # Step 5f - Compute corrected coefficients
+    C_D=const_vonKarman*const_vonKarman/(log(z/z_0[i1])-psim[i1])^2;
+    C_H=const_vonKarman*sqrt(C_D[i1])/(log(z/z_T[i1])-psit[i1]);
+    C_E=const_vonKarman*sqrt(C_D[i1])/(log(z/z_E[i1])-psie[i1]);
+    # Step 5g - Start iteration
+    L_prev = L_initial[i1];
+    L = L_prev*1.1; # Initialise while loop
+    count=0;
+    while (abs((L[i1] - L_prev))/abs(L_prev) > 0.000001){
+      # Iteration counter
+      count[i1]=count[i1]+1;
+      if (count[i1] > 20){
+        break; 
+      }
+      # Step 5i - Compute new z_O, roughness length for momentum
+      z_0= (const_Charnock*u_star[i1]^2./const_Gravity) + (0.11*v[i1]/u_star[i1]);
+      # Step 5j - Compute new Re_star
+      Re_star = u_star[i1]*z_0[i1]/v[i1];
+      # Step 5k - Compute new z_T, roughness length for temperature
+      z_T = z_0[i1]*exp(-2.67*(Re_star[i1])^(1/4) + 2.57);
+      # Step 5l - Compute new z_E, roughness length for vapour
+      z_E = z_0[i1]*exp(-2.67*(Re_star[i1])^(1/4) + 2.57);
+      # Step 5p - Compute new stability parameter
+      zeta = z/L[i1];
+      #fprintf('zeta #g\n',zeta[i1]);
+      # Step 5q - Check and enforce bounds on zeta
+      if (zeta[i1] > 15){
+        zeta[i1] = 15} 
+      else if (zeta[i1] < -15) {
+        zeta[i1] = -15}
+      # Step 5r - Compute new stability functions
+      psim=PSIM(zeta[i1]); # Momentum stability function
+      psit=PSITE(zeta[i1]); # Sensible heat stability function
+      psie=PSITE(zeta[i1]); # Latent heat stability function
+      # Step 5s - Compute corrected coefficients
+      C_D=const_vonKarman*const_vonKarman/(log(z/z_0[i1])-psim[i1])^2;
+      C_H=const_vonKarman*sqrt(C_D[i1])/(log(z/z_T[i1])-psit[i1]);
+      C_E=const_vonKarman*sqrt(C_D[i1])/(log(z/z_E[i1])-psie[i1]);
+      # Step 5m - Compute new H (now using corrected coefficients)
+      H = rho_a[i1]*const_SpecificHeatAir*C_H[i1]*U_Z[i1]*(T0[i1]-T[i1]);
+      # Step 5n - Compute new E (now using corrected coefficients)
+      E = rho_a[i1]*L_v[i1]*C_E[i1]*U_Z[i1]*(q_s[i1]-q_z[i1]);
+      # Step 5h - Compute new u_star
+      u_star=sqrt(C_D[i1]*U_Z[i1]^2);
+      # Step 5o - Compute new Monin-Obukhov length
+      dummy = L[i1]; # Used to control while loop
+      L = (-rho_a[i1]*u_star[i1]^3*T_v[i1])/(const_vonKarman*const_Gravity*(H[i1]/const_SpecificHeatAir + 0.61*E[i1]*(T[i1]+273.16)/L_v[i1]));
+      L_prev = dummy; # Used to control while loop
+    } # Converge when L within 0.0001# or previous L
+    
+  } # Need to iterate separately for each record
+  
+  
+  ### End step 5
+  
+  # Take real values to remove any complex values that arise from missing data or NaN.
+  C_D=Re(C_D);
+  C_E=Re(C_E);
+  C_H=Re(C_H);
+  z_0=Re(z_0);
+  z_E=Re(z_E);
+  z_T=Re(z_T);
+  
   # Compute evaporation [mm/day]
   Evap = 86400*1000*E/(rho_w*L_v);
   
@@ -441,7 +675,7 @@ integrate_agg_fun <- function(dt, y, int_method){
 }
 
 get_interp_drivers <- function(meteo_all, total_runtime, hydrodynamic_timestep, dt, method="interp", int_method="average",
-                               secchi){
+                               secchi = T){
   times = seq(1, 1 + total_runtime*hydrodynamic_timestep, dt)
   meteo = matrix(NA, nrow = 9, ncol = length(times))
   if(method == "interp"){
@@ -505,7 +739,7 @@ get_interp_drivers <- function(meteo_all, total_runtime, hydrodynamic_timestep, 
     } else {
       comb[, "kd"] = -999
     }
-# add group column
+    # add group column
     dt_hold = dt
     comb = comb %>% 
       mutate(group = dt %/% dt_hold) %>% 
@@ -548,7 +782,7 @@ run_thermalmodel <- function(u, startTime, endTime,
                              g = 9.81,
                              Cd = 0.0013, # momentum coefficient (wind)
                              sw_factor = 1.0,
-                             meltP = 5, 
+                             meltP = 1, 
                              dt_iceon_avg = 0.8,
                              Hgeo = 0.1, # geothermal heat
                              KEice = 1/1000, 
@@ -572,14 +806,15 @@ run_thermalmodel <- function(u, startTime, endTime,
   therm.z <- rep(NA, length =N_steps)
   mix.z <- rep(NA, length = N_steps)
   Him <- rep(NA, length = N_steps)
- 
+  
   SW <- rep(NA, length = N_steps)
   LW_in <- rep(NA, length = N_steps)
   LW_out <- rep(NA, length = N_steps)
   LAT <- rep(NA, length = N_steps)
   SEN <- rep(NA, length = N_steps)
-
+  
   if (pgdl_mode == 'on'){
+    um_heat <-  matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
     um_diff <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
     um_mix <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
     um_conv <- matrix(NA, ncol =length( seq(startTime, endTime, dt)/dt) , nrow = nx)
@@ -588,7 +823,7 @@ run_thermalmodel <- function(u, startTime, endTime,
     
     meteo_pgdl <- matrix(NA, ncol = length( seq(startTime, endTime, dt)/dt), nrow = 9)
   }
-
+  
   start.time <- Sys.time()
   ## modeling code for vertical 1D mixing and heat transport
   for (n in 1:N_steps){#1:(floor(endTime/dt - startTime/dt))){  #iterate through time 1:floor(nt/dt)
@@ -624,29 +859,34 @@ run_thermalmodel <- function(u, startTime, endTime,
       albedo = 0.1
     }
     kzm[, n] <- kzn
-
+    
     
     ## (1) Heat addition
     # surface heat flux
     Q <- (
-            longwave(cc = daily_meteo["CC",n], sigma = sigma, Tair = daily_meteo["Tair",n], ea = daily_meteo["ea",n], emissivity = emissivity, Jlw = daily_meteo["Jlw",n]) + 
-            backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
-            latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n], RH = daily_meteo["RH",n], A = area, Cd = Cd) + 
-            sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n]))
+      longwave(cc = daily_meteo["CC",n], sigma = sigma, Tair = daily_meteo["Tair",n], ea = daily_meteo["ea",n], emissivity = emissivity, Jlw = daily_meteo["Jlw",n]) + 
+        backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
+        latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n], RH = daily_meteo["RH",n], A = area, Cd = Cd) + 
+        sensible(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n], RH = daily_meteo["RH",n], A = area, Cd = Cd))
+    # sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n])
     
     SW[n] <- absorp * daily_meteo["Jsw",n] 
     LW_in[n] <- longwave(cc = daily_meteo["CC",n], sigma = sigma, Tair = daily_meteo["Tair",n], ea = daily_meteo["ea",n], emissivity = emissivity, Jlw = daily_meteo["Jlw",n])
     LW_out[n] <- backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) 
     LAT[n] <- latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n], RH = daily_meteo["RH",n], A = area, Cd = Cd) 
-    SEN[n] <- sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n])
+    SEN[n] <- sensible(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n], RH = daily_meteo["RH",n], A = area, Cd = Cd)
     
-  
+    
     # heat addition over depth
     H =  (1- albedo) * (daily_meteo["Jsw",n] * sw_factor) * exp(-(kd) *depth) 
-
+    
     Hg <- (area-lead(area))/dx * Hgeo/(4181 * calc_dens(un)) 
     Hg[nx] <- (area[nx-1]-area[nx])/dx * Hgeo/(4181 * calc_dens(un[nx])) 
-
+    
+    if (pgdl_mode == 'on'){
+      um_heat[, n] <- u
+    }
+    
     
     # add heat to all layers
     ## (2) DIFFUSION
@@ -658,19 +898,19 @@ run_thermalmodel <- function(u, startTime, endTime,
            abs(H[1+1]-H[1]) * area[1]/(dx) * 1/(4184 * calc_dens(un[1]) ) +
            Hg[1]) * dt/area[1]
       
-
+      
       # all other layers in between
       for (i in 2:(nx-1)){
         u[i] = un[i] +
           (abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ) +
              Hg[i])* dt/area[i]
-
+        
       }
-
+      
       # bottom layer
       u[nx] = un[nx] +
-      (abs(H[nx]-H[nx-1]) * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx])) +
-      Hg[nx]/area[nx]) * dt
+        (abs(H[nx]-H[nx-1]) * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx])) +
+           Hg[nx]/area[nx]) * dt
       
       ## (2b) Diffusion by Crank-Nicholson Scheme (CNS)
       j <- length(u)
@@ -703,12 +943,12 @@ run_thermalmodel <- function(u, startTime, endTime,
       for (g in 2:(j-1)){
         mn[g] = alpha[g] * u[g-1] + 2 * (1-alpha[g])*u[g] + alpha[g] * u[g+1]
       }
-
+      
       u  <- solve(y, mn)
       
     }
     
-
+    
     # surface layer
     if (scheme == 'explicit'){ # forward time centered space (FTCS)
       u[1] = un[1] +
@@ -826,7 +1066,7 @@ run_thermalmodel <- function(u, startTime, endTime,
     icep  = max(dt_iceon_avg,  (dt/86400))
     x = (dt/86400) / icep
     iceT = iceT * (1 - x) + u[1] * x
-
+    
     # if(Hi < 0){
     #   Hi = 0
     # }
@@ -845,9 +1085,9 @@ run_thermalmodel <- function(u, startTime, endTime,
         if (daily_meteo["Tair",n] > 0){
           Tice <- 0 # 
           Hi = Hi -max(c(0, meltP * dt*((absorp*daily_meteo["Jsw",n])+(longwave(cc = daily_meteo["CC",n], sigma = sigma, Tair = daily_meteo["Tair",n], ea = daily_meteo["ea",n], emissivity = emissivity, Jlw = daily_meteo["Jlw",n]) +
-                                                                     backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
-                                                                     latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n],  RH = daily_meteo["RH",n], A = area, Cd = Cd) + 
-                                                                     sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n])) )/(1000*333500)))
+                                                                         backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
+                                                                         latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n],  RH = daily_meteo["RH",n], A = area, Cd = Cd) + 
+                                                                         sensible(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n], RH = daily_meteo["RH",n], A = area, Cd = Cd)) )/(1000*333500)))
         } else {
           Tice <-  ((1/(10 * Hi)) * 0 + daily_meteo["Tair",n]) / (1 + (1/(10 * Hi))) 
           Hi <- max(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
@@ -862,9 +1102,10 @@ run_thermalmodel <- function(u, startTime, endTime,
     } else if (ice == TRUE & Hi >= Ice_min) {
       if (daily_meteo["Tair",n] > 0){
         Tice <- 0 # 
-        Hi = Hi -max(c(0, meltP * dt*((absorp*daily_meteo["Jsw",n])+(backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
-                                                                   latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n],  RH = daily_meteo["RH",n], A = area, Cd = Cd) + 
-                                                                   sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n])) )/(1000*333500))) 
+        Hi = Hi -max(c(0, meltP * dt*((absorp*daily_meteo["Jsw",n])+(longwave(cc = daily_meteo["CC",n], sigma = sigma, Tair = daily_meteo["Tair",n], ea = daily_meteo["ea",n], emissivity = emissivity, Jlw = daily_meteo["Jlw",n]) +
+                                                                       backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps) +
+                                                                       latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n],  RH = daily_meteo["RH",n], A = area, Cd = Cd) + 
+                                                                       sensible(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n], RH = daily_meteo["RH",n], A = area, Cd = Cd)) )/(1000*333500)))
       } else {
         Tice <-  ((1/(10 * Hi)) * 0 +  daily_meteo["Tair",n]) / (1 + (1/(10 * Hi))) 
         Hi <- max(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
@@ -881,7 +1122,7 @@ run_thermalmodel <- function(u, startTime, endTime,
       Hi = 0
       Him[n] = Hi
     }
-
+    
     n2m[, n] <- n2
     um[, n] <- u
     if (pgdl_mode == 'on'){
@@ -891,7 +1132,7 @@ run_thermalmodel <- function(u, startTime, endTime,
       meteo_pgdl[2, n] <-   longwave(cc = daily_meteo["CC",n], sigma = sigma, Tair = daily_meteo["Tair",n], ea = daily_meteo["ea",n], emissivity = emissivity, Jlw = daily_meteo["Jlw",n]) -
         backscattering(emissivity = emissivity, sigma = sigma, Twater = un[1], eps = eps)
       meteo_pgdl[3, n] <-   latent(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n], RH = daily_meteo["RH",n], A = area, Cd = Cd)
-      meteo_pgdl[4, n] <-   sensible(p2 = p2, B = B, Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n])
+      meteo_pgdl[4, n] <-   sensible(Tair = daily_meteo["Tair",n], Twater = un[1], Uw = daily_meteo["Uw",n], p2 = p2, pa = daily_meteo["Pa",n], ea=daily_meteo["ea",n], RH = daily_meteo["RH",n], A = area, Cd = Cd)
       meteo_pgdl[5, n] <-   daily_meteo["Jsw",n]
       meteo_pgdl[6, n] <-   kd
       meteo_pgdl[7, n] <-   shear
@@ -900,7 +1141,7 @@ run_thermalmodel <- function(u, startTime, endTime,
       
     }
     
-
+    
   }
   end.time <- Sys.time()
   time.taken <- end.time - start.time
@@ -944,7 +1185,7 @@ run_thermalmodel <- function(u, startTime, endTime,
   stratFlag = rep(NA, length = ncol(um))
   for (v in 1:length(stratFlag)){
     stratFlag[v] = ifelse((calc_dens(um[nx,v]) - calc_dens(um[1,v])) >= 0.1 &
-    mean(um[,v]) >= 4, 1, 0)
+                            mean(um[,v]) >= 4, 1, 0)
   }
   
   
@@ -986,12 +1227,14 @@ run_thermalmodel <- function(u, startTime, endTime,
                'thermoclinedepth' = therm.z,
                'endtime' = endTime,
                'average' = df.avg.sim,
+               'temp_heat' = um_heat,
                'temp_diff' = um_diff,
                'temp_mix' = um_mix,
                'temp_conv' = um_conv,
                'temp_ice' = um_ice,
                'meteo_input' = meteo_pgdl,
-               'buoyancy_pgdl' = n2_pgdl)
+               'buoyancy_pgdl' = n2_pgdl,
+               'icethickness_matrix' = Him)
   }
   
   return(dat)

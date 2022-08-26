@@ -103,7 +103,7 @@ for (i in 1:total_runtime){
                             iceT = iceT,
                             supercooled = supercooled,
                             kd_light = kd_light,
-                            sw_factor = 1.5,
+                            sw_factor = 1.50,
                             zmax = zmax,
                             nx = nx,
                             dt = dt,
@@ -168,6 +168,7 @@ ggplot(avgtemp) +
 
 df.ice = data.frame('time' = time,
                     'ice_h' = (as.numeric(unlist(icethickness))))
+ggplot(df.ice, aes(time, ice_h)) + geom_line()
 
 df <- data.frame(cbind(time, t(temp)) )
 colnames(df) <- c("time", as.character(paste0(seq(1,nrow(temp)))))
@@ -178,7 +179,7 @@ ggplot(m.df, aes((time), as.numeric(variable))) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
   scale_fill_gradientn(limits = c(-2,35),
                        colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
-  geom_line(data = avgtemp, aes(time, thermoclineDep, col = 'thermoclien depth'), linetype = 'dashed', col = 'brown') +
+  geom_line(data = avgtemp, aes(time, thermoclineDep, col = 'thermocline depth'), linetype = 'dashed', col = 'brown') +
   geom_line(data = df.ice, aes(time, ice_h * (-1), col = 'ice thickness'), linetype = 'solid', col = 'darkblue') +
   theme_minimal()  +xlab('Time') +
   ylab('Depth [m]') +
@@ -266,7 +267,14 @@ df <- df %>%
   select(-'doy')
 write.csv(df, file = 'output/meteorology_input.csv', row.names = F)
 
-
+ggplot(df) + 
+  geom_line(aes(time, `Sensible_Wm-2`, col = 'sensible')) + 
+  geom_line(aes(time, `Longwave_Wm-2`, col = 'longwave')) + 
+  geom_line(aes(time, `Latent_Wm-2`, col = 'latent')) + 
+  geom_line(aes(time, `Shortwave_Wm-2`, col = 'shortwave')) + 
+  geom_line(aes(time,`Sensible_Wm-2`+`Longwave_Wm-2`+`Latent_Wm-2`+`Shortwave_Wm-2`, col = 'sum'),
+            linetype = 'dashed', col = 'black') +
+  theme_minimal()
 
 # observed data
 # Package ID: knb-lter-ntl.130.29 Cataloging System:https://pasta.edirepository.org.
