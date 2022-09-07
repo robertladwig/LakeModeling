@@ -24,7 +24,7 @@ source('1D_HeatMixing_functions.R')
 
 ## lake configurations
 zmax = 5 # maximum lake depth
-nx = 15 # number of layers we will have
+nx = 20 # number of layers we will have
 dt = 3600  # 24 hours times 60 min/hour times 60 seconds/min
 dx = zmax/nx # spatial step
 
@@ -169,11 +169,11 @@ meteo = get_interp_drivers(meteo_all=meteo_all, total_runtime=total_runtime,
 
 
 peri_kd <- rep(0, length( hyps_all[[2]]))
-peri_kd[length(peri_kd)] = 12#0.8
+peri_kd[length(peri_kd)] = 1#0.8
 km = peri_kd #* 0# 0 * peri_kd
-volume_bio = 0.25
-area_bio = 3.5
-bbl_area = 0.01
+volume_bio = 0.5 #0.25
+area_bio = 0.1#3.5
+bbl_area = 0.05
 volume_phy = NA
 
 temp <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
@@ -330,34 +330,34 @@ df.validation <- data.frame('datetime' = time,
                             'ice_h' = as.numeric(unlist(icethickness)))
 
 v1 <- ggplot(df.validation) +
-  geom_line(aes(datetime, swt_sim, group = '0.5 temp.', col = 'sim')) +
+  geom_line(aes(datetime, swt_sim, group = '0.5 temp.', col = 'sim'), col = 'darkred') +
   geom_point(data = surf_temp, aes(datetime, Water_Temperature_celsius, 
-                                   group = '0.5 temp.', col = 'obs')) +
-  geom_line(aes(datetime, ice_h *10 , col = 'ice')) +
+                                   group = '0.5 temp.', col = 'obs'), col = 'red') +
+  geom_line(aes(datetime, ice_h *10 , col = 'ice'), col = 'gray') +
   xlab('') + ylab('Temp. [degC]') +
   ggtitle('0.5 m Temp.') +
   theme_minimal()
 v2 <-  ggplot(df.validation) +
   geom_point(data = bottom_temp, aes(datetime, Water_Temperature_celsius, 
-                                   group = '4.5 temp.', col = 'obs')) +
-  geom_line(aes(datetime, bwt_sim, group = '4.5 temp.', col = 'sim')) +
-  geom_line(aes(datetime, ice_h * 10, col = 'ice')) +
+                                   group = '4.5 temp.', col = 'obs'), col = 'red') +
+  geom_line(aes(datetime, bwt_sim, group = '4.5 temp.', col = 'sim'), col = 'darkred') +
+  geom_line(aes(datetime, ice_h * 10, col = 'ice'), col = 'gray') +
   xlab('') + ylab('Temp. [degC]') +
   ggtitle('4.5 m Temp.') +
   theme_minimal()
 v3 <-  ggplot(df.validation) +
   geom_point(data = surf_do, aes(datetime, Dissolved_oxygen_gram_per_cubicMeter, 
-                                   group = '0.5 do', col = 'obs')) +
-  geom_line(aes(datetime, sdo_sim, group = '4.5 do', col = 'sim')) +
-  geom_line(aes(datetime, ice_h * 10, col = 'ice')) +
+                                   group = '0.5 do', col = 'obs'), col = 'lightblue') +
+  geom_line(aes(datetime, sdo_sim, group = '4.5 do', col = 'sim'), col = 'darkblue') +
+  geom_line(aes(datetime, ice_h * 10, col = 'ice'), col = 'gray') +
   xlab('') + ylab('DO [g/m3]') +
   ggtitle('0.5 m DO') +
   theme_minimal()
 v4 <-  ggplot(df.validation) +
   geom_point(data = bottom_do, aes(datetime, Dissolved_oxygen_gram_per_cubicMeter, 
-                                     group = '4.5 do', col = 'obs')) +
-  geom_line(aes(datetime, bdo_sim, group = '4.5 do', col = 'sim')) +
-  geom_line(aes(datetime, ice_h * 10, col = 'ice')) +
+                                     group = '4.5 do', col = 'obs'), col = 'lightblue') +
+  geom_line(aes(datetime, bdo_sim, group = '4.5 do', col = 'sim'), col = 'darkblue') +
+  geom_line(aes(datetime, ice_h * 10, col = 'ice'), col = 'gray') +
   xlab('') + ylab('DO [g/m3]') +
   ggtitle('4.5 m DO') +
   theme_minimal()

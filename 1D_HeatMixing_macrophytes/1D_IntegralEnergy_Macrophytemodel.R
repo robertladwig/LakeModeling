@@ -52,9 +52,9 @@ library(adagio)
 
 ## lake configurations
 zmax = 2 # maximum depth
-nx = 20 # number of layers we will have
+nx = 8 # number of layers we will have
 dt = 3600 # time step, 60 min times 60 seconds/min
-dx = zmax/nx # spatial step
+dx=zmax/nx
 
 
 # area and depth values of our lake 
@@ -76,12 +76,15 @@ u <- initial_profile(initfile = 'bc/temp_profiles_2020.csv',
 
 
 
-# macrophyte
+# macrophyte 
 macro_all <- get_macrophyte(canopyfile = 'bc/canopy_F19.csv',
                             biomassfile = 'bc/biomass_F19.csv',
                             processed_meteo = meteo_all[[1]])
 
 nt = as.double(max(meteo_all[[1]]$dt)) # maximum time duration
+
+# dx = 0.5 # reduce spatial step
+# try reducing number of layers (dx=0.1, 0.2, to 0.5)
 
 
 # u = u
@@ -137,6 +140,10 @@ diff <- c()
 buoy <- c()
 macroz <- c()
 mixing <- c()
+
+
+nt = 2045*  3600
+
 res <- run_thermalmodel(u = u, 
                         startTime = 1, 
                         endTime = nt, 
@@ -154,18 +161,20 @@ res <- run_thermalmodel(u = u,
                         canpy = macro_all[[1]], # canopy height
                         biomass = macro_all[[2]], # macrophyte density
                         Cd = 0.0013, # wind momentum drag
-                        km = 0.2, #0.008,#0.04, # macrophyte light extinction
-                        Cdplant = 1,#1e3, # macrophyte momentum drag
-                        ahat = 0.5, # macrophyte area to volume
+                        km = 0.025, #0.008,#0.04, # macrophyte light extinction
+                        Cdplant = 1e3,#1e3, # macrophyte momentum drag
+                        ahat = 0.2, # macrophyte area to volume
                         reflect = 0.6, 
                         infra = 0.4,
-                        windfactor = 1, # wind multiplier 
-                        shortwavefactor = 0.8, # shortwave radiation multiplier
+                        windfactor = 1., # wind multiplier 
+                        shortwavefactor = 0.7, # shortwave radiation multiplier
                         diffusionfactor = 1, # diffusion multiplier
-                        diffmethod = 2,
+                        tempfactor = 1.1, 
+                        diffmethod = 1,
                         densThresh = 1e-2,
-                        Hgeo = 1,
-                        rho_plant = 30
+                        Hgeo = 0,
+                        rho_plant = 300,
+                        scheme = 'implicit'
                         )
 temp <-cbind(temp, res$temp)
 diff <-cbind(diff, res$diff)
@@ -179,6 +188,10 @@ colnames(df) <- c("time", as.character(paste0(seq(1,nrow(temp)))))
 m.df <- reshape2::melt(df, "time")
 m.df$time <- time
 
+m.df2<-m.df %>% 
+  mutate(variable=as.numeric(variable)) %>% 
+  mutate(depth=variable*0.1)
+
 df.kz <- data.frame(cbind(time, t(diff)) )
 colnames(df.kz) <- c("time", as.character(paste0(seq(1,nrow(diff))*dx)))
 m.df.kz <- reshape2::melt(df.kz, "time")
@@ -191,7 +204,7 @@ m.df.n2$time <- time
 
 g1 <- ggplot(m.df, aes((time), as.numeric(as.character(variable)))) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
-  scale_fill_gradientn(limits = c(10,45),
+  scale_fill_gradientn(limits = c(10,30),
                        colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
   theme_minimal()  +xlab('Time') +
   ylab('Depth') +
@@ -217,11 +230,40 @@ g <- g1 / g2 / g3 ; g
 ggsave(filename = paste0('heatmap_temp_diff_buoy','.png'),plot = g, width = 15, height = 8, units = 'in')
 
 
+### MANUSCRIPT FIGURE ---------------------------------------------------------------------------------------
+# MAIN HEAT MAP FIGURE PANEL
+# data frame = m.df2
+# convert time to day of year for consistency 
+library(lubridate)
+m.df2$doy<-yday(m.df2$time)
+m.df2$doy_frac<-hour(m.df2$time)
+m.df2$min<-minute(m.df2$time)
+m.df2$minfrac[m.df2$min=="30"] <- 0.5
+m.df2$minfrac[m.df2$min=="0"] <- 0
+m.df2$hourfrac<-(m.df2$doy_frac + m.df2$minfrac)/24
+m.df2$doy_frac<-m.df2$doy+m.df2$hourfrac
+
+m.df2<-m.df2 %>% 
+  select(time,doy,doy_frac,value, depth) %>%
+  rename(temp_c=value)
+
+output_heatmap<-
+ggplot(m.df2, aes((doy_frac), depth)) +
+  geom_raster(aes(fill = as.numeric(temp_c)), interpolate = TRUE) +
+  scale_fill_gradientn(limits = c(10,36),
+                       colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
+  theme_linedraw()  + theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank())+
+  xlab('Day of Year') + 
+  ylab('Depth (m)') + theme(legend.position="none")+
+  labs(fill = 'Temperature (C)')+  scale_y_reverse() 
+
+ggsave("no_mac_heatmap.png", output_heatmap, width=6, height=3.5, units="in")  
+### -----------------------------------------------------------------------------------------------------------
 
 ## model goodness
 obs <- read.csv('bc/temp_profiles_2020.csv')
 obs <- obs %>%
-  filter(pond == 'F', site_id == '19') %>%
+  filter(pond == 'B', site_id == '20') %>%
   select(datetime, temp_depth_m, temp_c)
 
 df.sim <- df
@@ -272,6 +314,7 @@ for (i in unique(as.character(m.obs$variable))){
                                  'fit' = sqrt((sum((o$value-s$value)**2))/nrow(o))))
 }
 
+# ORIGINAL PLOT
 ggplot() +
   geom_line(data = m.obs,aes(datetime, value, col = group)) +
   geom_line(data = m.df.sim.interp, aes(datetime, value, col = group)) +
@@ -281,6 +324,68 @@ ggplot() +
   xlab('') + ylab('Temp. (deg C)')+
   theme_bw()
 ggsave(filename = paste0('fieldcomparison.png'), width = 15, height = 8, units = 'in')
+
+### MANUSCRIPT MODEL FIT ------------------------------------------------------------------------------------
+# Data frames: observed values: m.obs; model = m.df.sim.interp
+# convert time to day of year for consistency 
+#library(lubridate)
+m.obs$doy<-yday(m.obs$datetime)
+m.obs$doy_frac<-hour(m.obs$datetime)
+m.obs$min<-minute(m.obs$datetime)
+m.obs$minfrac[m.obs$min=="30"] <- 0.5
+m.obs$minfrac[m.obs$min=="0"] <- 0
+m.obs$hourfrac<-(m.obs$doy_frac + m.obs$minfrac)/24
+m.obs$doy_frac<-m.obs$doy+m.obs$hourfrac
+
+m.obs.fig<-m.obs %>% 
+  select(datetime,doy,doy_frac,value, variable,group) %>%
+  rename(temp_c=value) %>% 
+  mutate(variable=(recode(variable, "temp_c.0" = "0 m", "temp_c.0.25"="0.25 m", "temp_c.0.5"="0.5 m",
+                "temp_c.0.75"="0.75 m", "temp_c.1.25"="1.25 m", "temp_c.1.5"= "1.5 m", "temp_c.2"="2 m")))
+
+m.df.sim.interp$doy<-yday(m.df.sim.interp$datetime)
+m.df.sim.interp$doy_frac<-hour(m.df.sim.interp$datetime)
+m.df.sim.interp$min<-minute(m.df.sim.interp$datetime)
+m.df.sim.interp$minfrac[m.df.sim.interp$min=="30"] <- 0.5
+m.df.sim.interp$minfrac[m.df.sim.interp$min=="0"] <- 0
+m.df.sim.interp$hourfrac<-(m.df.sim.interp$doy_frac + m.df.sim.interp$minfrac)/24
+m.df.sim.interp$doy_frac<-m.df.sim.interp$doy+m.df.sim.interp$hourfrac
+
+m.df.sim.interp.fig<-m.df.sim.interp %>% 
+  select(datetime,doy,doy_frac,value, variable,group) %>%
+  rename(temp_c=value) %>% 
+  mutate(variable=(recode(variable, "temp_c.0" = "0 m", "temp_c.0.25"="0.25 m", "temp_c.0.5"="0.5 m",
+                "temp_c.0.75"="0.75 m", "temp_c.1.25"="1.25 m", "temp_c.1.5"= "1.5 m", "temp_c.2"="2 m")))
+write.csv(m.df.sim.interp.fig, "model_out_calibrated.csv",row.names = F)
+
+write.csv(m.obs.fig, "model_out_observed.csv",row.names = F)
+
+
+# determination of change in temp over heatwave
+m.df.sim_daily<-m.df.sim.interp.fig %>% 
+  filter(variable=="2 m") %>% 
+  group_by(doy) %>% 
+  summarize(across(c(temp_c), ~mean(.,na.rm=T))) %>% 
+  ungroup()
+
+rmse.fig<-rmse %>% 
+  mutate(variable=(recode(variable, "temp_c.0" = "0 m", "temp_c.0.25"="0.25 m", "temp_c.0.5"="0.5 m",
+                          "temp_c.0.75"="0.75 m", "temp_c.1.25"="1.25 m", "temp_c.1.5"= "1.5 m", "temp_c.2"="2 m")))
+
+# PLOT
+modelgoodnessplot<-
+  ggplot() +
+  geom_line(data = m.obs.fig,aes(doy_frac, temp_c), col="grey40") +
+  geom_line(data = m.df.sim.interp.fig, aes(doy_frac, temp_c), col="#FF0066") +
+  geom_text(data=rmse.fig, aes( x=150, y=35, label=round(fit,2)),                 
+            color="black", size =3.5) +
+  facet_wrap(~ variable, nrow=4) +
+  xlab('Day of Year') + ylab('Water Temperature (C)')+
+  theme_linedraw()  + theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank())
+ggsave("Model_Fit.png",modelgoodnessplot, width = 7, height = 11, units = 'in')
+
+### -----------------------------------------------------------------------------------------------------------------
+
 
 
 
@@ -324,7 +429,7 @@ ggsave(filename = paste0('fieldcomparison.png'), width = 15, height = 8, units =
 # 
 # }
 
-#### OPTIMIZATION ROUTINE
+#### OPTIMIZATION ROUTINE --------------------------------------------------------------------------------------
 
 optim_macro <- function(p, scaling = TRUE, lb, ub){
 
@@ -364,7 +469,7 @@ optim_macro <- function(p, scaling = TRUE, lb, ub){
                           shortwavefactor = p[6], # shortwave radiation multiplier
                           diffusionfactor = p[7], # diffusion multiplier
                           diffmethod = 2,
-                          densThresh = 1e-2,
+                          densThresh = 1e-3,
                           Hgeo = p[8],
                           rho_plant = p[9]
   )
@@ -380,7 +485,7 @@ optim_macro <- function(p, scaling = TRUE, lb, ub){
   ## model goodness
   obs <- read.csv('bc/temp_profiles_2020.csv')
   obs <- obs %>%
-    filter(pond == 'F', site_id == '19') %>%
+    filter(pond == 'B', site_id == '20') %>%
     select(datetime, temp_depth_m, temp_c)
   
   df.sim <- df
@@ -430,17 +535,16 @@ optim_macro <- function(p, scaling = TRUE, lb, ub){
     rmse <- rbind(rmse, data.frame('variable' = i,
                                    'fit' = sqrt((sum((o$value-s$value)**2))/nrow(o))))
   }
-  rmse_fit = rmse %>%
-    filter(variable %in% c('temp_c.0', 'temp_c.1', 'temp_c.2'))
-  return(sum(rmse_fit$fit, na.rm = T))
+  return(sum(rmse$fit, na.rm = T))
 }
 
+#can play around with sum versus median
 
 
 scaling = TRUE
-calib_setup <- data.frame('x0' = c(1.3e-3, 0.2, 1, 0.5, 1, 0.8, 1, 1, 30),
-                          'ub' = c(4.3e-3, 0.9, 1e3, 0.9, 1.3, 1.3, 1.2, 5, 3e3),
-                          'lb' = c(1.3e-4, 1e-2, 1e-2, 1e-2, 0.7, 0.7, 0.8, 1e-2, 3e-2))
+calib_setup <- data.frame('x0' = c(1.3e-3, 0.005, 1, 0.5, 1, 1, 1, 0.1, 30),
+                          'ub' = c(4.3e-3, 0.9, 1e3, 0.9, 1.3, 1.3, 1.2, 0.2, 3e3),
+                          'lb' = c(1.3e-4, 1e-2, 1e-2, 1e-2, 0.7, 0.4, 0.8, 1e-2, 3e-2))
 
 if (scaling){
   init.val <- (calib_setup$x0 - calib_setup$lb) *10 /(calib_setup$ub-calib_setup$lb) 
@@ -450,7 +554,7 @@ opt <- pureCMAES(par = init.val, fun = optim_macro, lower = rep(0,length(init.va
           upper = rep(10,length(init.val)), 
           sigma = 0.5, 
           stopfitness = 1, 
-          stopeval = 100,
+          stopeval = 30,
           scaling = scaling, lb = calib_setup$lb, ub = calib_setup$ub)
   
 val <- wrapper_scales(opt$xmin, lb = calib_setup$lb, ub = calib_setup$ub)
@@ -546,7 +650,7 @@ ggsave(filename = paste0('heatmap_temp_diff_buoy','.png'),plot = g, width = 15, 
 ## model goodness
 obs <- read.csv('bc/temp_profiles_2020.csv')
 obs <- obs %>%
-  filter(pond == 'F', site_id == '19') %>%
+  filter(pond == 'B', site_id == '20') %>%
   select(datetime, temp_depth_m, temp_c)
 
 df.sim <- df
