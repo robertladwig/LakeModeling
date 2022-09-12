@@ -190,7 +190,7 @@ m.df$time <- time
 
 m.df2<-m.df %>% 
   mutate(variable=as.numeric(variable)) %>% 
-  mutate(depth=variable*0.1)
+  mutate(depth=variable*dx)
 
 df.kz <- data.frame(cbind(time, t(diff)) )
 colnames(df.kz) <- c("time", as.character(paste0(seq(1,nrow(diff))*dx)))
@@ -202,7 +202,7 @@ colnames(df.n2) <- c("time", as.character(paste0(seq(1,nrow(buoy))*dx)))
 m.df.n2 <- reshape2::melt(df.n2, "time")
 m.df.n2$time <- time
 
-g1 <- ggplot(m.df, aes((time), as.numeric(as.character(variable)))) +
+g1 <- ggplot(m.df, aes((time), dx*as.numeric(as.character(variable)))) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
   scale_fill_gradientn(limits = c(10,30),
                        colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
@@ -210,7 +210,7 @@ g1 <- ggplot(m.df, aes((time), as.numeric(as.character(variable)))) +
   ylab('Depth') +
   labs(fill = 'Temp [degC]')+
   scale_y_reverse() 
-g2 <- ggplot(m.df.kz, aes((time), as.numeric(as.character(variable)))) +
+g2 <- ggplot(m.df.kz, aes((time), dx * as.numeric(as.character(variable)))) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
   scale_fill_gradientn(#limits = c(-20,35),
     colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
@@ -218,7 +218,7 @@ g2 <- ggplot(m.df.kz, aes((time), as.numeric(as.character(variable)))) +
   ylab('Depth') +
   labs(fill = 'Diffusion [m2/s]')+
   scale_y_reverse() 
-g3 <- ggplot(m.df.n2, aes((time), as.numeric(as.character(variable)))) +
+g3 <- ggplot(m.df.n2, aes((time), dx * as.numeric(as.character(variable)))) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
   scale_fill_gradientn(#limits = c(-20,35),
     colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
@@ -248,7 +248,7 @@ m.df2<-m.df2 %>%
   rename(temp_c=value)
 
 output_heatmap<-
-ggplot(m.df2, aes((doy_frac), depth)) +
+ggplot(m.df2, aes((doy_frac), depth )) +
   geom_raster(aes(fill = as.numeric(temp_c)), interpolate = TRUE) +
   scale_fill_gradientn(limits = c(10,36),
                        colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+

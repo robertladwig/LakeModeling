@@ -443,6 +443,24 @@ g2 <- ggplot(m.df.do, aes((time), as.numeric(variable)*dx)) +
 
 g1 / g2
 
+df.eddy <- data.frame(cbind(time, t(diff)) )
+colnames(df.eddy) <- c("time", as.character(paste0(seq(1,nrow(diff)))))
+m.df.eddy <- reshape2::melt(df.eddy, "time")
+m.df.eddy$time <- time
+
+wind = data.frame('time' = time, "U2" = meteo["Uw", -1])
+
+g3 <- ggplot(m.df.eddy, aes((time), as.numeric(variable)*dx)) +
+  geom_raster(aes(fill = log10(as.numeric(value))), interpolate = TRUE) +
+  scale_fill_gradientn(
+                       colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
+  geom_line(data = wind, aes(time, (-1) * (U2 - min(U2, na.rm = T))/
+                               (max(U2, na.rm = T) - min(U2, na.rm = T)), col = 'Wind [m/s]')) +
+  theme_minimal()  +xlab('Time') +
+  ylab('Depth') +
+  labs(fill = 'log10 Kz [m2/s]')+
+  scale_y_reverse() ;g3
+
 
 ## vertical temperature profiles
 for (i in seq(1,ncol(temp), length.out = 300)){
