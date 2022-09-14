@@ -969,7 +969,7 @@ run_thermalmodel <- function(u, startTime, endTime,
       
       # surface layer
       do[1] = don[1] +
-        ((Fvol/86400) * dt* part_volume[1] +
+        ((Fvol/86400) * dt* part_volume[1] * 1.08^(u[1]-20) +
         (k600 * (o2sat - don[1])) * dt/dx * volume[nx])/volume[1]
       
       bbl_area = area * eff_area
@@ -981,15 +981,15 @@ run_thermalmodel <- function(u, startTime, endTime,
       # all other layers in between
       for (i in 2:(nx-1)){
         do[i] = don[i] +
-          (Fvol/86400) * dt * part_volume[i]#  +
+          (Fvol/86400) * dt * part_volume[i] * 1.08^(u[i]-20)#  +
          # (- area[i] * Fred/86400 - bbl_area[i] * (Do2)/delta_DBL * don[i]) * dt/volume[i]
       }
       
       
       
       do[nx] = don[nx] +
-        (Fvol/86400) * dt * part_volume[nx] +
-        (- bbl_area[nx] * Fred/86400  - bbl_area[nx] * (Do2)/delta_DBL * don[nx]) * dt/volume[nx]
+        ((Fvol/86400) * dt * part_volume[nx] +
+        (- bbl_area[nx] * Fred/86400  - bbl_area[nx] * (Do2)/delta_DBL * don[nx]) * dt/volume[nx])  * 1.08^(u[nx]-20)
       # 
       
       sedflux[ n ] <- (- bbl_area[nx] * Fred/86400  - bbl_area[nx] * (Do2)/delta_DBL * don[nx]) * 1/volume[nx]

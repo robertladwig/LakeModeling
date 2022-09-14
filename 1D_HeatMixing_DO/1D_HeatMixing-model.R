@@ -171,8 +171,8 @@ meteo = get_interp_drivers(meteo_all=meteo_all, total_runtime=total_runtime,
 peri_kd <- rep(0, length( hyps_all[[2]]))
 peri_kd[length(peri_kd)] = 1#0.8
 km = peri_kd #* 0# 0 * peri_kd
-volume_bio = 0.5 #0.25
-area_bio = 0.1#3.5
+volume_bio = 1.5 #0.25
+area_bio = 0.5#3.5
 bbl_area = 0.05
 volume_phy = NA
 
@@ -442,6 +442,21 @@ g2 <- ggplot(m.df.do, aes((time), as.numeric(variable)*dx)) +
   scale_y_reverse() ;g2
 
 g1 / g2
+
+df.ice = data.frame('time' = time,
+                    'ice_h' = (as.numeric(unlist(icethickness))))
+
+ggplot(m.df.do, aes((time), as.numeric(variable)*dx)) +
+  geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
+  scale_fill_gradientn(limits = c(0,12),
+                       colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
+  geom_line(data = df.ice, aes(time, ice_h * (-1), col = 'ice thickness'), linetype = 'solid', col = 'darkblue') +
+  theme_minimal()  +xlab('Time') +
+  ylab('Depth') +
+  labs(fill = 'Oxygen [g/m3]')+
+  scale_y_reverse()
+
+ggsave(filename = 'domap.png', width=8, height=3.5, units="in")
 
 df.eddy <- data.frame(cbind(time, t(diff)) )
 colnames(df.eddy) <- c("time", as.character(paste0(seq(1,nrow(diff)))))

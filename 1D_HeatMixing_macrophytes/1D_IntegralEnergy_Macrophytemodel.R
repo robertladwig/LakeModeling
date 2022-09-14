@@ -247,17 +247,28 @@ m.df2<-m.df2 %>%
   select(time,doy,doy_frac,value, depth) %>%
   rename(temp_c=value)
 
+df.macro = data.frame('time' = time,
+                    'macro_h' = (as.numeric(unlist(macroz))))
+df.macro$doy<-yday(df.macro$time)
+df.macro$doy_frac<-hour(df.macro$time)
+df.macro$min<-minute(df.macro$time)
+df.macro$minfrac[df.macro$min=="30"] <- 0.5
+df.macro$minfrac[df.macro$min=="0"] <- 0
+df.macro$hourfrac<-(df.macro$doy_frac + df.macro$minfrac)/24
+df.macro$doy_frac<-df.macro$doy+df.macro$hourfrac
+
 output_heatmap<-
 ggplot(m.df2, aes((doy_frac), depth )) +
   geom_raster(aes(fill = as.numeric(temp_c)), interpolate = TRUE) +
   scale_fill_gradientn(limits = c(10,36),
                        colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
   theme_linedraw()  + theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank())+
+  geom_line(data = df.macro, aes(doy_frac, 2 - macro_h , col = 'macrophyte height'), linetype = 'dashed', col = 'darkgreen') +
   xlab('Day of Year') + 
-  ylab('Depth (m)') + theme(legend.position="none")+
+  ylab('Depth (m)') + #theme(legend.position="none")+
   labs(fill = 'Temperature (C)')+  scale_y_reverse() 
 
-ggsave("no_mac_heatmap.png", output_heatmap, width=6, height=3.5, units="in")  
+ggsave("no_mac_heatmap.png", output_heatmap, width=8, height=3.5, units="in")  
 ### -----------------------------------------------------------------------------------------------------------
 
 ## model goodness
