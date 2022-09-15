@@ -449,9 +449,9 @@ df.ice = data.frame('time' = time,
 ggplot(m.df.do, aes((time), as.numeric(variable)*dx)) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +
   scale_fill_gradientn(limits = c(0,12),
-                       colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
+                       colours = (RColorBrewer::brewer.pal(11, 'PuBu')))+
   geom_line(data = df.ice, aes(time, ice_h * (-1), col = 'ice thickness'), linetype = 'solid', col = 'darkblue') +
-  theme_minimal()  +xlab('Time') +
+  theme_bw()  +xlab('Time') +
   ylab('Depth') +
   labs(fill = 'Oxygen [g/m3]')+
   scale_y_reverse()
