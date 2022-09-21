@@ -1,3 +1,6 @@
 [submodule "1D_HeatMixing_DO/FABs-DO-concept"]
 	path = 1D_HeatMixing_DO/FABs-DO-concept
 	url = https://github.com/bellaoleksy/FABs-DO-concept.git
+[submodule "LakeModelR"]
+	path = LakeModelR
+	url = https://github.com/robertladwig/LakeModelR
