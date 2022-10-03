@@ -187,6 +187,25 @@ ggplot(m.df, aes((time), as.numeric(variable))) +
   scale_y_reverse() 
 ggsave(filename = 'heatmap.png', width = 15, height = 8, units = 'in')
 
+df <- data.frame(cbind(time, t(diff)) )
+colnames(df) <- c("time", as.character(paste0(seq(1,nrow(temp)))))
+m.df <- reshape2::melt(df, "time")
+m.df$time <- time
+
+ggplot(m.df, aes((time), as.numeric(variable))) +
+  geom_raster(aes(fill = log10(as.numeric(value))), interpolate = TRUE) +
+  scale_fill_gradientn(#limits = c(1e-7,4e-5),
+                       colours = rev(RColorBrewer::brewer.pal(11, 'Spectral')))+
+  geom_line(data = avgtemp, aes(time, thermoclineDep, col = 'thermocline depth'), linetype = 'dashed', col = 'white') +
+  geom_line(data = df.ice, aes(time, ice_h * (-1), col = 'ice thickness'), linetype = 'solid', col = 'darkblue') +
+  theme_minimal()  +xlab('Time') +
+  ylab('Depth [m]') +
+  labs(fill = 'Temp [degC]')+
+  scale_y_reverse() 
+ggsave(filename = 'diffmap.png', width = 15, height = 8, units = 'in')
+
+
+
 
 # save data for PGDL
 df <- data.frame(cbind(time, t(temp)) )

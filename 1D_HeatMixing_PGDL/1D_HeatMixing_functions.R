@@ -138,6 +138,61 @@ backscattering <- function(emissivity, sigma, Twater, eps){ # backscattering lon
 #   sensible <- ( p2 * B * fu * (Twater - Tair)) 
 #   return((-1) * sensible)
 # }
+# Function list, used by script above
+
+PSIM <- function(zeta){
+  # Function to compute stability functions for momentum
+  if (zeta < 0.0){
+    X = (1 - 16*zeta)^0.25; 
+    psim = 2*log((1 + X)/2) + log((1 + X*X)/2)-2*atan(X) + pi/2;      
+  }
+  else if(zeta > 0.0){
+    if (zeta > 0.5){
+      if (zeta > 10.0){
+        psim = log(zeta) - 0.76*zeta - 12.093;
+      }
+      else{
+        psim = 0.5/(zeta*zeta) - 4.25/zeta - 7.0*log(zeta) - 0.852; 
+      }
+    }
+    else {
+      psim = -5*zeta ;
+    }
+    
+  }   # Stable case
+  else {
+    psim = 0.0;
+  }
+  
+  return(psim) 
+}
+
+
+
+PSITE = function(zeta){
+  # Function to compute stability functions for sensible and latent heat
+  if (zeta < 0.0){
+    X = (1 - 16*zeta)^0.25; 
+    psite = 2*log((1 + X*X)/2);
+  }
+  else if (zeta > 0.0)  { # Stable case
+    if (zeta > 0.5)   {   
+      if (zeta > 10.0) {
+        psite = log(zeta) - 0.76*zeta - 12.093;
+      }
+      else{
+        psite = 0.5/(zeta*zeta) - 4.25/zeta - 7.0*log(zeta) - 0.852; 
+      }
+    }
+    else { 
+      psite = -5*zeta ;
+    }
+  }
+  else {
+    psite = 0.0;
+  }
+  return(psite)
+}
 sensible <- function(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.013){ # evaporation / latent heat
   # https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2009JD012839
   
@@ -149,61 +204,7 @@ sensible <- function(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.013){ # evapora
   # A = 31861
   # Cd = 0.0037
   # 
-  # Function list, used by script above
-  #-------------------------------------------------------
-  PSIM <- function(zeta){
-    # Function to compute stability functions for momentum
-    if (zeta < 0.0){
-      X = (1 - 16*zeta)^0.25; 
-      psim = 2*log((1 + X)/2) + log((1 + X*X)/2)-2*atan(X) + pi/2;      
-    }
-    else if(zeta > 0.0){
-      if (zeta > 0.5){
-        if (zeta > 10.0){
-          psim = log(zeta) - 0.76*zeta - 12.093;
-        }
-        else{
-          psim = 0.5/(zeta*zeta) - 4.25/zeta - 7.0*log(zeta) - 0.852; 
-        }
-      }
-      else {
-        psim = -5*zeta ;
-      }
-      
-    }   # Stable case
-    else {
-      psim = 0.0;
-    }
-    
-    return(psim) 
-  }
-  
-  
-  #-------------------------------------------------------
-  PSITE = function(zeta){
-    # Function to compute stability functions for sensible and latent heat
-    if (zeta < 0.0){
-      X = (1 - 16*zeta)^0.25; 
-      psite = 2*log((1 + X*X)/2);
-    }
-    else if (zeta > 0.0)  { # Stable case
-      if (zeta > 0.5)   {   
-        if (zeta > 10.0) {
-          psite = log(zeta) - 0.76*zeta - 12.093;
-        }
-        else{
-          psite = 0.5/(zeta*zeta) - 4.25/zeta - 7.0*log(zeta) - 0.852; 
-        }
-      }
-      else { 
-        psite = -5*zeta ;
-      }
-    }
-    else {
-      psite = 0.0;
-    }
-    return(psite)
-  }
+
   
   const_SpecificHeatAir = 1005;           # Units : J kg-1 K-1
   const_vonKarman = 0.41;                 # Units : none
@@ -422,61 +423,7 @@ latent <- function(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.013){ # evaporati
   # A = 31861
   # Cd = 0.0037
   # 
-  # Function list, used by script above
-  #-------------------------------------------------------
-  PSIM <- function(zeta){
-    # Function to compute stability functions for momentum
-    if (zeta < 0.0){
-      X = (1 - 16*zeta)^0.25; 
-      psim = 2*log((1 + X)/2) + log((1 + X*X)/2)-2*atan(X) + pi/2;      
-    }
-    else if(zeta > 0.0){
-      if (zeta > 0.5){
-        if (zeta > 10.0){
-          psim = log(zeta) - 0.76*zeta - 12.093;
-        }
-        else{
-          psim = 0.5/(zeta*zeta) - 4.25/zeta - 7.0*log(zeta) - 0.852; 
-        }
-      }
-      else {
-        psim = -5*zeta ;
-      }
-      
-    }   # Stable case
-    else {
-      psim = 0.0;
-    }
-    
-    return(psim) 
-  }
-  
-  
-  #-------------------------------------------------------
-  PSITE = function(zeta){
-    # Function to compute stability functions for sensible and latent heat
-    if (zeta < 0.0){
-      X = (1 - 16*zeta)^0.25; 
-      psite = 2*log((1 + X*X)/2);
-    }
-    else if (zeta > 0.0)  { # Stable case
-      if (zeta > 0.5)   {   
-        if (zeta > 10.0) {
-          psite = log(zeta) - 0.76*zeta - 12.093;
-        }
-        else{
-          psite = 0.5/(zeta*zeta) - 4.25/zeta - 7.0*log(zeta) - 0.852; 
-        }
-      }
-      else { 
-        psite = -5*zeta ;
-      }
-    }
-    else {
-      psite = 0.0;
-    }
-    return(psite)
-  }
+ 
   
   const_SpecificHeatAir = 1005;           # Units : J kg-1 K-1
   const_vonKarman = 0.41;                 # Units : none
