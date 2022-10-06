@@ -38,7 +38,7 @@ u_ini <- initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
 
 ### EXAMPLE RUNS
 hydrodynamic_timestep = 24 * 3600 #24/4 * dt
-total_runtime <- 365 * 1
+total_runtime <- 365 * 4
 startingDate <- meteo_all[[1]]$datetime[1]
 
 temp <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
@@ -380,7 +380,7 @@ df <- df %>%
   select(-c('doy', 'year'))
 
 dat0 = wide.obs[,-1]
-dat0[dat0 < 5] = NA
+# dat0[dat0 < 5] = NA
 dat = zoo::na.approx(dat0) # apply(as.matrix(wide.obs[,-1]), 1, function(x) zoo::na.approx(x))
 # dat2 = do.call(rbind, dat)
 # dat2 = matrix(unlist(dat), ncol = 21, byrow = T)
