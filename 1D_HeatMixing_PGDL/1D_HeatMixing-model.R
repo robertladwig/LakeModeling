@@ -380,8 +380,8 @@ df <- df %>%
   select(-c('doy', 'year'))
 
 dat0 = wide.obs[,-1]
-# dat0[dat0 < 5] = NA
-dat = zoo::na.approx(dat0) # apply(as.matrix(wide.obs[,-1]), 1, function(x) zoo::na.approx(x))
+dat0[dat0 < 5] = NA
+dat = zoo::na.approx(dat0, na.rm = F, rule = 2) # apply(as.matrix(wide.obs[,-1]), 1, function(x) zoo::na.approx(x))
 # dat2 = do.call(rbind, dat)
 # dat2 = matrix(unlist(dat), ncol = 21, byrow = T)
 dat3 = apply(as.matrix(dat), 1, function(x) approx(seq(0,20,1),x,seq(1,25,1), method = 'linear', rule=2)$y)
