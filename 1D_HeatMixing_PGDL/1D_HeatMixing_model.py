@@ -13,7 +13,7 @@ import seaborn as sns
 if os.environ.get("USERNAME") == 'cal':
      os.chdir("/home/cal/Documents/PostDoc/Projects/LakeModeling/1D_HeatMixing_PGDL")
 else:
-     os.chdir("C:/Users/ladwi/Documents/Projects/R/LakeModeling/1D_HeatMixing_PGDL")
+     os.chdir("/home/robert/Projects/LakeModeling/1D_HeatMixing_PGDL")
 from oneD_HeatMixing_Functions import get_hypsography, provide_meteorology, initial_profile, run_thermalmodel
 
 ## lake configurations
@@ -37,7 +37,7 @@ u_ini = initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
                      processed_meteo = meteo_all[0])
                      
 hydrodynamic_timestep = 24 * dt
-total_runtime = 365 * 8
+total_runtime = 365 * 1
 
 startingDate = meteo_all[0]['date'][0]
 
@@ -97,7 +97,7 @@ for i in range(total_runtime):
     Hi = Hi,
     iceT = iceT,
     supercooled = supercooled,
-    scheme='explicit',
+    scheme='explict',
     kd_light = kd_light,
     denThresh=1e-3,
     reflect=0.3,

@@ -169,7 +169,7 @@ def run_thermalmodel(
   meltP=5,
   dt_iceon_avg=0.8,
   Hgeo=0.1, # geothermal heat
-  KEice=1/1000,
+  KEice=0,
   Ice_min=0.1,
   pgdl_mode='off'):
     
@@ -258,8 +258,46 @@ def run_thermalmodel(
     
     ## (2) DIFFUSION
     if scheme == 'implicit':
-      print('sorry, implicit method not implemented')
+        u[0] = (un[0] + 
+        (Q * area[0]/(dx)*1/(4184 * calc_dens(un[0]) ) + abs(H[0+1]-H[0]) * area[0]/(dx) * 1/(4184 * calc_dens(un[0]) ) + 
+        Hg[0]) * dt/area[0])
+      # all layers in between
+        for i in range(1,(nx-1)):
+            u[i] = (un[i] + (
+                abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ) + Hg[i])* dt/area[i])
+      # bottom layer
+        u[(nx-1)] = (un[(nx-1)] + abs(H[(nx-1)]-H[(nx-1)-1]) * area[(nx-1)]/(area[(nx-1)]*dx) * 1/(4181 * calc_dens(un[(nx-1)])) +Hg[(nx-1)]/area[(nx-1)]) * dt
+        # IMPLEMENTATION OF CRANK-NICHOLSON SCHEME
+        j = len(un)
+        y = np.zeros((len(un), len(un)))
+
+        alpha = (dt/dx**2) * kzn
+
+        az = - alpha # subdiagonal
+        bz = 2 * (1 + alpha) # diagonal
+        cz = - alpha # superdiagonal
+    
+        bz[:, 0] = 1
+        az[:, nx-2] = 0
+        bz[:, nx-1] = 1
+        cz[:, 0] = 0
+    
+        az = az[:,1:]
+        cz = cz[:,:-1]
+
+        y = np.diag_embed(bz, offset=0)+np.diag_embed(az,offset=-1)+np.diag_embed(cz,offset=1) #slightly efficient way of computing the diagonal matrices
+        y[:, nx-1, nx-1] = 1
+    
+        mn = np.zeros_like(un)  
+        mn[:, 0] = un[:, 0]
+        mn[:,nx-1] = un[:, nx-1]
+        
+        mn[:, 1:nx-1] = alpha[:, 1:nx-1]*un[:, :nx-2] + 2 * (1 - alpha[:,1:nx-1])*un[:,1:nx-1] + alpha[:,1:nx-1]*un[:,1:nx-1] #is be same as the loop
+    
+    # DERIVED TEMPERATURE OUTPUT FOR NEXT MODULE
+        u = np.linalg.solve(y, mn)
     # TODO: implement / figure out this
+    # TODO: what???
     if scheme == 'explicit':
       u[0] = (un[0] + 
         (Q * area[0]/(dx)*1/(4184 * calc_dens(un[0]) ) + abs(H[0+1]-H[0]) * area[0]/(dx) * 1/(4184 * calc_dens(un[0]) ) + 
@@ -380,7 +418,7 @@ def run_thermalmodel(
                                                            sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[0], Uw = Uw(n))) )/(1000*333500)]))
         else:
           Tice =  ((1/(10 * Hi)) * 0 +  Tair(n)) / (1 + (1/(10 * Hi))) 
-          Hi = min(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
+          Hi = max(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
       ice = True
       if (Hi > 0):
         u[supercooled] = 0
@@ -394,7 +432,7 @@ def run_thermalmodel(
                                                          sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[0], Uw = Uw(n))) )/(1000*333500)]))
       else:
         Tice =  ((1/(10 * Hi)) * 0 +  Tair(n*dt)) / (1 + (1/(10 * Hi))) 
-        Hi = min(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
+        Hi = max(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
       
       u[supercooled] = 0
       u[0] = 0
