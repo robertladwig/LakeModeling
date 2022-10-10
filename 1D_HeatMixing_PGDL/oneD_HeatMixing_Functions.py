@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import os
-from math import pi, exp, sqrt
+from math import pi, exp, sqrt, log, atan
 from scipy.interpolate import interp1d
 from copy import deepcopy
 import datetime
@@ -119,6 +119,43 @@ def backscattering(emissivity, sigma, Twater, eps): # backscattering longwave
   Twater = Twater + 273.15
   back = -1 * (eps * sigma * (Twater)**4) 
   return(back)
+
+def PSIM(zeta):
+  # Function to compute stability functions for momentum
+  if zeta < 0.0:
+    X = (1 - 16*zeta)**0.25
+    psim = 2*log((1 + X)/2) + log((1 + X*X)/2)-2*atan(X) + pi/2 
+  elif zeta > 0.0:
+    if zeta > 0.5:
+      if zeta > 10.0:
+        psim = log(zeta) - 0.76*zeta - 12.093
+      else:
+        psim = 0.5/(zeta*zeta) - 4.25/zeta - 7.0*log(zeta) - 0.852
+    else:
+      psim = -5*zeta
+  # Stable case
+  else:
+    psim = 0.0
+  return(psim)
+
+
+
+def PSITE(zeta):
+  # Function to compute stability functions for sensible and latent heat
+  if zeta < 0.0:
+    X = (1 - 16*zeta)**0.25
+    psite = 2*log((1 + X*X)/2)
+  elif zeta > 0.0:# Stable case
+    if zeta > 0.5:
+      if zeta > 10.0:
+        psite = log(zeta) - 0.76*zeta - 12.093
+      else:
+        psite = 0.5/(zeta*zeta) - 4.25/zeta - 7.0*log(zeta) - 0.852
+    else: 
+      psite = -5*zeta
+  else:
+    psite = 0.0
+  return(psite)
 
 def sensible(p2, B, Tair, Twater, Uw): # convection / sensible heat
   Twater = Twater + 273.15
