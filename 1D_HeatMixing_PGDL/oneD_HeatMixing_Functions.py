@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import os
-from math import pi, exp, sqrt, log, atan
+from math import pi, exp, sqrt, log, atan, log
 from scipy.interpolate import interp1d
 from copy import deepcopy
 import datetime
@@ -162,7 +162,8 @@ def PSITE(zeta):
 #   sensible = -1 * ( p2 * B * fu * (Twater - Tair)) 
 #   return(sensible)
 
-def sensible(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.013): # evaporation / latent heat
+def sensible(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.0013): # evaporation / latent heat
+  global H
   # https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2009JD012839
   
   # Tair =0
@@ -228,12 +229,14 @@ def sensible(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.013): # evaporation / l
   
   z_0 = (const_Charnock*u_star**2./const_Gravity) + (0.11*v/u_star)
   z_0_prev=z_0*1.1 # To initiate the iteration
-  for i1 in range(0, len(U_Z)):
-    while (abs((z_0[i1] - z_0_prev[i1]))/abs(z_0_prev[i1]) > 0.000001): # Converge when z_0 within 0.0001# of previous value 
-      u_star[i1]=const_vonKarman*U_Z[i1]/(log(z/z_0[i1]))  # Compute u_star
-      dummy = z_0[i1] # Used to control while loop
-      z_0[i1]=(const_Charnock*u_star[i1]**2./const_Gravity) + (0.11*v[i1]/u_star[i1]); # Compute new roughness length
-      z_0_prev[i1] = dummy # Used to control while loop
+  
+
+  
+  while (abs((z_0 - z_0_prev))/abs(z_0_prev) > 0.000001): # Converge when z_0 within 0.0001# of previous value 
+    u_star=const_vonKarman*U_Z/(log(z/z_0))  # Compute u_star
+    dummy = z_0 # Used to control while loop
+    z_0=(const_Charnock*u_star**2./const_Gravity) + (0.11*v/u_star); # Compute new roughness length
+    z_0_prev = dummy # Used to control while loop
   
   # Step 4d - Compute initial neutral drag coefficient
   C_DN = (u_star**2)/(U_Z**2) # Units - none
@@ -253,67 +256,67 @@ def sensible(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.013): # evaporation / l
   
   ### Step 5 - Start iteration to compute corrections for atmospheric stability
   # for (i1 in 1:length(U_Z)){
-  for i1 in range(0, len(U_Z)):  
-    # Step 5a - Compute initial sensible heat flux based on neutral coefficients
-    H_initial = rho_a[i1]*const_SpecificHeatAir*C_HN[i1]*U_Z[i1]*(T0[i1]-T[i1]) # Units : W m-2
-    # Step 5b - Compute initial latent heat flux based on neutral coefficients
-    E_initial = rho_a[i1]*L_v[i1]*C_EN[i1]*U_Z[i1]*(q_s[i1]-q_z[i1]) # Units : W m-2
-    # Step 5c - Compute initial Monin-Obukhov length
-    L_initial = (-rho_a[i1]*u_star[i1]***3*T_v[i1])/(const_vonKarman*const_Gravity*(H_initial[i1]/const_SpecificHeatAir + 0.61*E_initial[i1]*(T[i1]+273.16)/L_v[i1])) # Units - m
-    # Step 5d - Compute initial stability parameter
-    zeta_initial = z/L_initial[i1]
-    # Step 5e - Compute initial stability function
-    psim=PSIM(zeta_initial[i1]) # Momentum stability function
-    psit=PSITE(zeta_initial[i1]) # Sensible heat stability function
-    psie=PSITE(zeta_initial[i1]) # Latent heat stability function
-    # Step 5f - Compute corrected coefficients
-    C_D=const_vonKarman*const_vonKarman/(log(z/z_0[i1])-psim[i1])**2
-    C_H=const_vonKarman*sqrt(C_D[i1])/(log(z/z_T[i1])-psit[i1])
-    C_E=const_vonKarman*sqrt(C_D[i1])/(log(z/z_E[i1])-psie[i1])
-    # Step 5g - Start iteration
-    L_prev = L_initial[i1]
-    L = L_prev*1.1 # Initialise while loop
-    count=np.zeros(len(U_Z));
-    while (abs((L[i1] - L_prev))/abs(L_prev) > 0.000001):
-      # Iteration counter
-      count[i1]=count[i1]+1;
-      if count[i1] > 20:
-        break
-      # Step 5i - Compute new z_O, roughness length for momentum
-      z_0= (const_Charnock*u_star[i1]**2./const_Gravity) + (0.11*v[i1]/u_star[i1])
-      # Step 5j - Compute new Re_star
-      Re_star = u_star[i1]*z_0[i1]/v[i1]
-      # Step 5k - Compute new z_T, roughness length for temperature
-      z_T = z_0[i1]*exp(-2.67*(Re_star[i1])**(1/4) + 2.57)
-      # Step 5l - Compute new z_E, roughness length for vapour
-      z_E = z_0[i1]*exp(-2.67*(Re_star[i1])**(1/4) + 2.57)
-      # Step 5p - Compute new stability parameter
-      zeta = z/L[i1];
-      #fprintf('zeta #g\n',zeta[i1]);
-      # Step 5q - Check and enforce bounds on zeta
-      if zeta[i1] > 15:
-        zeta[i1] = 15
-      elif zeta[i1] < -15 :
-        zeta[i1] = -15
-      # Step 5r - Compute new stability functions
-      psim=PSIM(zeta[i1]) # Momentum stability function
-      psit=PSITE(zeta[i1]) # Sensible heat stability function
-      psie=PSITE(zeta[i1]) # Latent heat stability function
-      # Step 5s - Compute corrected coefficients
-      C_D=const_vonKarman*const_vonKarman/(log(z/z_0[i1])-psim[i1])**2;
-      C_H=const_vonKarman*sqrt(C_D[i1])/(log(z/z_T[i1])-psit[i1])
-      C_E=const_vonKarman*sqrt(C_D[i1])/(log(z/z_E[i1])-psie[i1])
-      # Step 5m - Compute new H (now using corrected coefficients)
-      H = rho_a[i1]*const_SpecificHeatAir*C_H[i1]*U_Z[i1]*(T0[i1]-T[i1]);
-      # Step 5n - Compute new E (now using corrected coefficients)
-      E = rho_a[i1]*L_v[i1]*C_E[i1]*U_Z[i1]*(q_s[i1]-q_z[i1]);
-      # Step 5h - Compute new u_star
-      u_star=sqrt(C_D[i1]*U_Z[i1]**2);
-      # Step 5o - Compute new Monin-Obukhov length
-      dummy = L[i1]; # Used to control while loop
-      L = (-rho_a[i1]*u_star[i1]**3*T_v[i1])/(const_vonKarman*const_Gravity*(H[i1]/const_SpecificHeatAir + 0.61*E[i1]*(T[i1]+273.16)/L_v[i1]));
-      L_prev = dummy; # Used to control while loop
-    # Converge when L within 0.0001# or previous L
+
+  # Step 5a - Compute initial sensible heat flux based on neutral coefficients
+  H_initial = rho_a*const_SpecificHeatAir*C_HN*U_Z*(T0-T) # Units : W m-2
+  # Step 5b - Compute initial latent heat flux based on neutral coefficients
+  E_initial = rho_a*L_v*C_EN*U_Z*(q_s-q_z) # Units : W m-2
+  # Step 5c - Compute initial Monin-Obukhov length
+  L_initial = (-rho_a*u_star**3*T_v)/(const_vonKarman*const_Gravity*(H_initial/const_SpecificHeatAir + 0.61*E_initial*(T+273.16)/L_v)) # Units - m
+  # Step 5d - Compute initial stability parameter
+  zeta_initial = z/L_initial
+  # Step 5e - Compute initial stability function
+  psim=PSIM(zeta_initial) # Momentum stability function
+  psit=PSITE(zeta_initial) # Sensible heat stability function
+  psie=PSITE(zeta_initial) # Latent heat stability function
+  # Step 5f - Compute corrected coefficients
+  C_D=const_vonKarman*const_vonKarman/(log(z/z_0)-psim)**2
+  C_H=const_vonKarman*sqrt(C_D)/(log(z/z_T)-psit)
+  C_E=const_vonKarman*sqrt(C_D)/(log(z/z_E)-psie)
+  # Step 5g - Start iteration
+  L_prev = L_initial
+  L = L_prev*1.1 # Initialise while loop
+  count=np.zeros(1);
+  while (abs((L - L_prev))/abs(L_prev) > 0.000001):
+    # Iteration counter
+    count=count+1;
+    if count > 20:
+      break
+    # Step 5i - Compute new z_O, roughness length for momentum
+    z_0= (const_Charnock*u_star**2./const_Gravity) + (0.11*v/u_star)
+    # Step 5j - Compute new Re_star
+    Re_star = u_star*z_0/v
+    # Step 5k - Compute new z_T, roughness length for temperature
+    z_T = z_0*exp(-2.67*(Re_star)**(1/4) + 2.57)
+    # Step 5l - Compute new z_E, roughness length for vapour
+    z_E = z_0*exp(-2.67*(Re_star)**(1/4) + 2.57)
+    # Step 5p - Compute new stability parameter
+    zeta = z/L;
+    #fprintf('zeta #g\n',zeta);
+    # Step 5q - Check and enforce bounds on zeta
+    if zeta > 15:
+      zeta = 15
+    elif zeta < -15 :
+      zeta = -15
+    # Step 5r - Compute new stability functions
+    psim=PSIM(zeta) # Momentum stability function
+    psit=PSITE(zeta) # Sensible heat stability function
+    psie=PSITE(zeta) # Latent heat stability function
+    # Step 5s - Compute corrected coefficients
+    C_D=const_vonKarman*const_vonKarman/(log(z/z_0)-psim)**2;
+    C_H=const_vonKarman*sqrt(C_D)/(log(z/z_T)-psit)
+    C_E=const_vonKarman*sqrt(C_D)/(log(z/z_E)-psie)
+    # Step 5m - Compute new H (now using corrected coefficients)
+    H = rho_a*const_SpecificHeatAir*C_H*U_Z*(T0-T);
+    # Step 5n - Compute new E (now using corrected coefficients)
+    E = rho_a*L_v*C_E*U_Z*(q_s-q_z);
+    # Step 5h - Compute new u_star
+    u_star=sqrt(C_D*U_Z**2);
+    # Step 5o - Compute new Monin-Obukhov length
+    dummy = L; # Used to control while loop
+    L = (-rho_a*u_star**3*T_v)/(const_vonKarman*const_Gravity*(H/const_SpecificHeatAir + 0.61*E*(T+273.16)/L_v));
+    L_prev = dummy; # Used to control while loop
+  # Converge when L within 0.0001# or previous L
     
   # Need to iterate separately for each record
   
@@ -321,12 +324,12 @@ def sensible(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.013): # evaporation / l
   ### End step 5
   
   # Take real values to remove any complex values that arise from missing data or NaN.
-  C_D=C_D.real 
-  C_E=C_E.real 
-  C_H=C_H.real 
-  z_0=z_0.real 
-  z_E=z_E.real 
-  z_T=z_T.real
+  # C_D=C_D.real 
+  # C_E=C_E.real 
+  # C_H=C_H.real 
+  # z_0=z_0.real 
+  # z_E=z_E.real 
+  # z_T=z_T.real
   
   # Compute evaporation [mm/day]
   Evap = 86400*1000*E/(rho_w*L_v)
@@ -343,6 +346,180 @@ def sensible(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.013): # evaporation / l
 #   ew = fw * 10 * ((0.7859+0.03477* Twater)/(1+0.00412* Twater))
 #   latent = -1* fu * p2 * (ew - ea)# * 1.33) // * 1/6
 #   return(latent)
+def latent(Tair, Twater, Uw, p2, pa, ea, RH, A, Cd = 0.0013): # evaporation / latent heat
+  global E
+  # https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2009JD012839
+   
+  # Tair =0
+  # Twater = 0
+  # Uw = 0.01
+  # pa = 98393
+  # ea = 6.079572
+  # A = 31861
+  # Cd = 0.0037
+  
+  const_SpecificHeatAir = 1005;           # Units : J kg-1 K-1
+  const_vonKarman = 0.41;                 # Units : none
+  const_Gravity = 9.81;                   # Units : m s-2
+  const_Charnock = Cd;   
+  
+  U_Z = Uw
+  if Uw <= 0:
+    U_Z = 1e-3
+  T = Tair
+  if Tair == 0:
+    T = np.random.uniform(low = 1e-7, high = 1e-5)
+  T0 = Twater
+  if Twater == 0: 
+    T0 = np.random.uniform(low = 1e-7, high = 1e-5)
+  Rh = RH
+  p = pa/100
+  z = 2
+  
+  # Step 2c - Compute saturated vapour pressure at air temperature
+  e_s = 6.11*exp(17.27*T/(237.3+T)) # Units : mb ##REF##
+  # Step 2d - Compute vapour pressure
+  e_a = Rh*e_s/100 # Units : mb
+  ### End step 2
+  
+  ### Step 3 - Compute other values used in flux calculations
+  # Step 3a - Compute specific humidity
+  q_z = 0.622*e_a/p # Units: kg kg-1
+  # Step 3b - Compute saturated vapour pressure at water temperature
+  e_sat = 6.11*exp(17.27*T0/(237.3+T0)) # Units : mb ##REF##
+  # Step 3c - Compute humidity at saturation (Henderson-Sellers 1986 eqn 36)
+  q_s = 0.622*e_sat/p # Units: kg kg-1
+  # Step 3d - Compute latent heat of vaporisation
+  L_v = 2.501e6-2370*T0 # Units : J kg-1 ** EQUATION FROM PIET ##REF##
+  # Step 3e - Compute gas constant for moist air
+  R_a = 287*(1+0.608*q_z) # Units : J kg-1 K-1
+  # Step 3f - Compute air density
+  rho_a = 100*p/(R_a*(T+273.16)) # Units : kg m-3
+  # Step 3g - Compute kinematic viscosity of air 
+  v = (1./rho_a)*(4.94e-8*T + 1.7184e-5) # Units : m2 s-1
+  # Step 3h - Compute virtual air temperature and virtual air-water temperature difference
+  T_v = (T+273.16)*(1+0.61*q_z) # Units - K
+  T_ov = (T0+273.16)*(1+0.61*q_s) # Units - K
+  del_theta = T_ov - T_v
+  # Step 3h - Compute water density 
+  rho_w = 1000*(1-1.9549*0.00001*abs(T0-3.84)**1.68)
+  ### End step 3
+  
+  # step 4
+  u_star = U_Z *sqrt(0.00104+0.0015/(1+exp((-U_Z+12.5)/1.56))) # Amorocho and DeVries, initialise ustar using U_Z
+  
+  if u_star == 0: 
+    u_star = 1e-6
+  
+  z_0 = (const_Charnock*u_star**2./const_Gravity) + (0.11*v/u_star)
+  z_0_prev=z_0*1.1 # To initiate the iteration
+  
+
+  
+  while (abs((z_0 - z_0_prev))/abs(z_0_prev) > 0.000001): # Converge when z_0 within 0.0001# of previous value 
+    u_star=const_vonKarman*U_Z/(log(z/z_0))  # Compute u_star
+    dummy = z_0 # Used to control while loop
+    z_0=(const_Charnock*u_star**2./const_Gravity) + (0.11*v/u_star); # Compute new roughness length
+    z_0_prev = dummy # Used to control while loop
+  
+  # Step 4d - Compute initial neutral drag coefficient
+  C_DN = (u_star**2)/(U_Z**2) # Units - none
+  # Step 4e - Compute roughness Reynolds number 
+  Re_star = u_star*z_0/v # Units - none
+  # Step 4f - Compute initial roughness length for temperature
+  z_T = z_0*exp(-2.67*(Re_star)**(1/4) + 2.57) # Units - m
+  z_T = z_T.real # Get real components, and NaN can create imag component despite no data
+  # Step 4g - Compute initial roughness length for vapour 
+  z_E = z_0*exp(-2.67*(Re_star)**(1/4) + 2.57); # Units - m 
+  z_E = z_E.real # Get real components, and NaN can create imag component despite no data
+  # Step 4h - Compute initial neutral sensible heat transfer coefficient 
+  C_HN = const_vonKarman*sqrt(C_DN)/(log(z/z_T)) 
+  # Step 4i - Compute initial neutral latent heat transfer coefficient
+  C_EN = const_vonKarman*sqrt(C_DN)/(log(z/z_E))
+  ### End step 4
+  
+  ### Step 5 - Start iteration to compute corrections for atmospheric stability
+  # for (i1 in 1:length(U_Z)){
+
+  # Step 5a - Compute initial sensible heat flux based on neutral coefficients
+  H_initial = rho_a*const_SpecificHeatAir*C_HN*U_Z*(T0-T) # Units : W m-2
+  # Step 5b - Compute initial latent heat flux based on neutral coefficients
+  E_initial = rho_a*L_v*C_EN*U_Z*(q_s-q_z) # Units : W m-2
+  # Step 5c - Compute initial Monin-Obukhov length
+  L_initial = (-rho_a*u_star**3*T_v)/(const_vonKarman*const_Gravity*(H_initial/const_SpecificHeatAir + 0.61*E_initial*(T+273.16)/L_v)) # Units - m
+  # Step 5d - Compute initial stability parameter
+  zeta_initial = z/L_initial
+  # Step 5e - Compute initial stability function
+  psim=PSIM(zeta_initial) # Momentum stability function
+  psit=PSITE(zeta_initial) # Sensible heat stability function
+  psie=PSITE(zeta_initial) # Latent heat stability function
+  # Step 5f - Compute corrected coefficients
+  C_D=const_vonKarman*const_vonKarman/(log(z/z_0)-psim)**2
+  C_H=const_vonKarman*sqrt(C_D)/(log(z/z_T)-psit)
+  C_E=const_vonKarman*sqrt(C_D)/(log(z/z_E)-psie)
+  # Step 5g - Start iteration
+  L_prev = L_initial
+  L = L_prev*1.1 # Initialise while loop
+  count=np.zeros(1);
+  while (abs((L - L_prev))/abs(L_prev) > 0.000001):
+    # Iteration counter
+    count=count+1;
+    if count > 20:
+      break
+    # Step 5i - Compute new z_O, roughness length for momentum
+    z_0= (const_Charnock*u_star**2./const_Gravity) + (0.11*v/u_star)
+    # Step 5j - Compute new Re_star
+    Re_star = u_star*z_0/v
+    # Step 5k - Compute new z_T, roughness length for temperature
+    z_T = z_0*exp(-2.67*(Re_star)**(1/4) + 2.57)
+    # Step 5l - Compute new z_E, roughness length for vapour
+    z_E = z_0*exp(-2.67*(Re_star)**(1/4) + 2.57)
+    # Step 5p - Compute new stability parameter
+    zeta = z/L;
+    #fprintf('zeta #g\n',zeta);
+    # Step 5q - Check and enforce bounds on zeta
+    if zeta > 15:
+      zeta = 15
+    elif zeta < -15 :
+      zeta = -15
+    # Step 5r - Compute new stability functions
+    psim=PSIM(zeta) # Momentum stability function
+    psit=PSITE(zeta) # Sensible heat stability function
+    psie=PSITE(zeta) # Latent heat stability function
+    # Step 5s - Compute corrected coefficients
+    C_D=const_vonKarman*const_vonKarman/(log(z/z_0)-psim)**2;
+    C_H=const_vonKarman*sqrt(C_D)/(log(z/z_T)-psit)
+    C_E=const_vonKarman*sqrt(C_D)/(log(z/z_E)-psie)
+    # Step 5m - Compute new H (now using corrected coefficients)
+    H = rho_a*const_SpecificHeatAir*C_H*U_Z*(T0-T);
+    # Step 5n - Compute new E (now using corrected coefficients)
+    E = rho_a*L_v*C_E*U_Z*(q_s-q_z);
+    # Step 5h - Compute new u_star
+    u_star=sqrt(C_D*U_Z**2);
+    # Step 5o - Compute new Monin-Obukhov length
+    dummy = L; # Used to control while loop
+    L = (-rho_a*u_star**3*T_v)/(const_vonKarman*const_Gravity*(H/const_SpecificHeatAir + 0.61*E*(T+273.16)/L_v));
+    L_prev = dummy; # Used to control while loop
+  # Converge when L within 0.0001# or previous L
+    
+  # Need to iterate separately for each record
+  
+  
+  ### End step 5
+  
+  # Take real values to remove any complex values that arise from missing data or NaN.
+  # C_D=C_D.real 
+  # C_E=C_E.real 
+  # C_H=C_H.real 
+  # z_0=z_0.real 
+  # z_E=z_E.real 
+  # z_T=z_T.real
+  
+  # Compute evaporation [mm/day]
+  Evap = 86400*1000*E/(rho_w*L_v)
+  
+  latent = E
+  return latent* (-1)
 
 def run_thermalmodel(
   u, 
@@ -369,6 +546,7 @@ def run_thermalmodel(
   eps=0.97,
   emissivity=0.97,
   sigma=5.67e-8,
+  sw_factor = 1.0,
   p2=1,
   B=0.61,
   g=9.81,
@@ -457,11 +635,11 @@ def run_thermalmodel(
     Q = (
          longwave(cc = CC(n), sigma = sigma, Tair = Tair(n), ea = ea(n), emissivity = emissivity, Jlw = Jlw(n)) + #longwave(emissivity = emissivity, Jlw = Jlw(n)) +
             backscattering(emissivity = emissivity, sigma = sigma, Twater = un[0], eps = eps) +
-            latent(Tair = Tair(n), Twater = un[0], Uw = Uw(n), p2 = p2, pa = Pa(n), ea=ea(n), RH = RH(n)) + 
-            sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[0], Uw = Uw(n)))  
+            latent(Tair = Tair(n), Twater = un[0], Uw = Uw(n), p2 = p2, pa = Pa(n), ea=ea(n), RH = RH(n), A = area, Cd = Cd) + 
+            sensible(Tair = Tair(n), Twater = un[0], Uw = Uw(n), p2 = p2, pa = Pa(n), ea=ea(n), RH = RH(n), A = area, Cd = Cd))  
     
     # heat addition over depth
-    H =  (1- albedo) * (Jsw(n))  * np.exp(-(kd(n) ) * depth)
+    H =  (1- albedo) * (Jsw(n) * sw_factor)  * np.exp(-(kd(n) ) * depth)
     
     Hg = (area[:-1]-area[1:])/dx * Hgeo/(4181 * calc_dens(un[0]))
     Hg = np.append(Hg, Hg.min())
@@ -478,7 +656,10 @@ def run_thermalmodel(
       # bottom layer
         u[(nx-1)] = un[(nx-1)] + (abs(H[(nx-1)]-H[(nx-2)]) * area[(nx-1)]/(area[(nx-1)] * dx) * 1/(4181 * calc_dens(un[(nx-1)])) +Hg[(nx-1)]/area[(nx-1)]) * dt
 
-        
+        # print(u)
+        # print(H)
+        # print(Hg)
+      
         # IMPLEMENTATION OF CRANK-NICHOLSON SCHEME
         
         j = len(un)
@@ -491,7 +672,7 @@ def run_thermalmodel(
         cz = - alpha # superdiagonal
         
         bz[0] = 1
-        az[len(az)-2] = 0
+        # az[len(az)-2] = 0
         bz[len(bz)-1] = 1
         cz[0] = 0
         
@@ -506,16 +687,16 @@ def run_thermalmodel(
         
         # y[0,1] = 0    
         # y[j-1, j-1] = 1
-        # y[j-1, j-2] = 0
+        y[j-1, j-2] = 0
         y[j-1, j-1] = 1
         
         # print(y[0:4])
         
         mn = un * 0.0    
-        mn[0] = un[0]
+        mn[0] = u[0]
         mn[len(mn)-1] = u[len(u)-1]
         
-        for k in range(1,j-1):
+        for k in range(1,j-2):
             mn[k] = alpha[k] * u[k-1] + 2 * (1 - alpha[k]) * u[k] + alpha[k] * u[k]
 
         # j = len(un)
@@ -545,11 +726,11 @@ def run_thermalmodel(
         # mn[:, 1:nx-1] = alpha[:, 1:nx-1]*un[:, :nx-2] + 2 * (1 - alpha[:,1:nx-1])*un[:,1:nx-1] + alpha[:,1:nx-1]*un[:,1:nx-1] #is be same as the loop
     
     # DERIVED TEMPERATURE OUTPUT FOR NEXT MODULE
-        # print(y[0:4, ])
-        # print(mn[0:4, ])
-        # print(u)
-        # breakpoint()
+
         
+        # print(y)
+        # print(mn)
+        # breakpoint()
         u = np.linalg.solve(y, mn)
     # TODO: implement / figure out this
     if scheme == 'explicit':
@@ -668,8 +849,8 @@ def run_thermalmodel(
           Tice = 0
           Hi = (Hi - max([0, meltP * dt*((absorp*Jsw(n))+(longwave(cc = CC(n), sigma = sigma, Tair = Tair(n), ea = ea(n), emissivity = emissivity, Jlw = Jlw(n)) +
                                                            backscattering(emissivity = emissivity, sigma = sigma, Twater = un[0], eps = eps) +
-                                                           latent(Tair = Tair(n), Twater = un[0], Uw = Uw(n ), p2 = p2, pa = Pa(n), ea=ea(n),  RH = RH(n)) + 
-                                                           sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[0], Uw = Uw(n))) )/(1000*333500)]))
+                                                           latent(Tair = Tair(n), Twater = un[0], Uw = Uw(n), p2 = p2, pa = Pa(n), ea=ea(n), RH = RH(n), A = area, Cd = Cd) + 
+                                                           sensible(Tair = Tair(n), Twater = un[0], Uw = Uw(n), p2 = p2, pa = Pa(n), ea=ea(n), RH = RH(n), A = area, Cd = Cd)) )/(1000*333500)]))
         else:
           Tice =  ((1/(10 * Hi)) * 0 +  Tair(n)) / (1 + (1/(10 * Hi))) 
           Hi = max(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
@@ -682,8 +863,8 @@ def run_thermalmodel(
       if (Tair(n) > 0):
         Tice = 0
         Hi = (Hi - max([0, meltP * dt*((absorp*Jsw(n))+(backscattering(emissivity = emissivity, sigma = sigma, Twater = un[0], eps = eps) +
-                                                         latent(Tair = Tair(n), Twater = un[0], Uw = Uw(n ), p2 = p2, pa = Pa(n), ea=ea(n*dt),  RH = RH(n)) + 
-                                                         sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[0], Uw = Uw(n))) )/(1000*333500)]))
+                                                         latent(Tair = Tair(n), Twater = un[0], Uw = Uw(n), p2 = p2, pa = Pa(n), ea=ea(n), RH = RH(n), A = area, Cd = Cd) + 
+                                                         sensible(Tair = Tair(n), Twater = un[0], Uw = Uw(n), p2 = p2, pa = Pa(n), ea=ea(n), RH = RH(n), A = area, Cd = Cd)) )/(1000*333500)]))
       else:
         Tice =  ((1/(10 * Hi)) * 0 +  Tair(n*dt)) / (1 + (1/(10 * Hi))) 
         Hi = max(Ice_min, sqrt(Hi**2 + 2 * 2.1/(910 * 333500)* (0 - Tice) * dt))
@@ -702,8 +883,8 @@ def run_thermalmodel(
       meteo_pgdl[0, idn] = Tair(n)
       meteo_pgdl[1, idn] = (longwave(cc = CC(n), sigma = sigma, Tair = Tair(n), ea = ea(n), emissivity = emissivity, Jlw = Jlw(n)) -
         backscattering(emissivity = emissivity, sigma = sigma, Twater = un[0], eps = eps))
-      meteo_pgdl[2, idn] = latent(Tair = Tair(n), Twater = un[0], Uw = Uw(n), p2 = p2, pa = Pa(n), ea=ea(n), RH = RH(n))
-      meteo_pgdl[3, idn] = sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[0], Uw = Uw(n))
+      meteo_pgdl[2, idn] = latent(Tair = Tair(n), Twater = un[0], Uw = Uw(n), p2 = p2, pa = Pa(n), ea=ea(n), RH = RH(n), A = area, Cd = Cd)
+      meteo_pgdl[3, idn] = sensible(Tair = Tair(n), Twater = un[0], Uw = Uw(n), p2 = p2, pa = Pa(n), ea=ea(n), RH = RH(n), A = area, Cd = Cd)
       meteo_pgdl[4, idn] = Jsw(n)
       meteo_pgdl[5, idn] = kd(n)
       meteo_pgdl[6, idn] = shear

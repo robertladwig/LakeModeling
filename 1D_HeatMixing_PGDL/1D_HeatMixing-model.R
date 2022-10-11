@@ -200,7 +200,7 @@ ggplot(m.df, aes((time), as.numeric(variable))) +
   geom_line(data = df.ice, aes(time, ice_h * (-1), col = 'ice thickness'), linetype = 'solid', col = 'darkblue') +
   theme_minimal()  +xlab('Time') +
   ylab('Depth [m]') +
-  labs(fill = 'Temp [degC]')+
+  labs(fill = 'Diffusivity [m2/s]')+
   scale_y_reverse() 
 ggsave(filename = 'diffmap.png', width = 15, height = 8, units = 'in')
 

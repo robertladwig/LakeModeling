@@ -859,6 +859,7 @@ run_thermalmodel <- function(u, startTime, endTime,
         (abs(H[nx]-H[nx-1]) * area[nx]/(area[nx]*dx) * 1/(4181 * calc_dens(un[nx])) +
            Hg[nx]/area[nx]) * dt
       
+
       ## (2b) Diffusion by Crank-Nicholson Scheme (CNS)
       j <- length(u)
       y <- array(0, c(j,j))
@@ -894,6 +895,7 @@ run_thermalmodel <- function(u, startTime, endTime,
         mn[g] = alpha[g] * u[g-1] + 2 * (1-alpha[g])*u[g] + alpha[g] * u[g+1]
       }
       
+
       u  <- solve(y, mn)
       
     }

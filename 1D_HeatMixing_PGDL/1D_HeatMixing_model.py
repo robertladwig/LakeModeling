@@ -37,7 +37,7 @@ u_ini = initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
                      processed_meteo = meteo_all[0])
                      
 hydrodynamic_timestep = 24 * dt
-total_runtime = 365 * 1
+total_runtime = 365 * 4
 
 startingDate = meteo_all[0]['date'][0]
 
@@ -105,14 +105,15 @@ for i in range(total_runtime):
     eps=0.97,
     emissivity=0.97,
     sigma=5.67e-8,
+    sw_factor = 1.5,
     p2=1,
     B=0.61,
     g=9.81,
     Cd = 0.0008, # momentum coeff (wind)
-    meltP=5,
+    meltP=1,
     dt_iceon_avg=0.8,
     Hgeo=0.1, # geothermal heat
-    KEice=1/1000,
+    KEice=0,
     Ice_min=0.1,
     pgdl_mode = 'on')
   
