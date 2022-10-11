@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import os
-from math import pi, exp, sqrt, log, atan
+from math import pi, exp, sqrt
 from scipy.interpolate import interp1d
 from copy import deepcopy
 import datetime
@@ -120,43 +120,6 @@ def backscattering(emissivity, sigma, Twater, eps): # backscattering longwave
   back = -1 * (eps * sigma * (Twater)**4) 
   return(back)
 
-def PSIM(zeta):
-  # Function to compute stability functions for momentum
-  if zeta < 0.0:
-    X = (1 - 16*zeta)**0.25
-    psim = 2*log((1 + X)/2) + log((1 + X*X)/2)-2*atan(X) + pi/2 
-  elif zeta > 0.0:
-    if zeta > 0.5:
-      if zeta > 10.0:
-        psim = log(zeta) - 0.76*zeta - 12.093
-      else:
-        psim = 0.5/(zeta*zeta) - 4.25/zeta - 7.0*log(zeta) - 0.852
-    else:
-      psim = -5*zeta
-  # Stable case
-  else:
-    psim = 0.0
-  return(psim)
-
-
-
-def PSITE(zeta):
-  # Function to compute stability functions for sensible and latent heat
-  if zeta < 0.0:
-    X = (1 - 16*zeta)**0.25
-    psite = 2*log((1 + X*X)/2)
-  elif zeta > 0.0:# Stable case
-    if zeta > 0.5:
-      if zeta > 10.0:
-        psite = log(zeta) - 0.76*zeta - 12.093
-      else:
-        psite = 0.5/(zeta*zeta) - 4.25/zeta - 7.0*log(zeta) - 0.852
-    else: 
-      psite = -5*zeta
-  else:
-    psite = 0.0
-  return(psite)
-
 def sensible(p2, B, Tair, Twater, Uw): # convection / sensible heat
   Twater = Twater + 273.15
   Tair = Tair + 273.15
@@ -206,7 +169,7 @@ def run_thermalmodel(
   meltP=5,
   dt_iceon_avg=0.8,
   Hgeo=0.1, # geothermal heat
-  KEice=1/1000,
+  KEice=0,
   Ice_min=0.1,
   pgdl_mode='off'):
     
@@ -266,33 +229,30 @@ def run_thermalmodel(
       n2 = 9.81/np.mean(dens_u_n2) * (dens_u_n2[1:] - dens_u_n2[:-1])/dx
       n2_pgdl[:,idn] = np.concatenate([n2, np.array([np.nan])])
     kz = eddy_diffusivity(dens_u_n2, depth, 9.81, 998.2, ice, area) / 86400
-    kzn = kz
 
     if ice and Tair(n) <= 0:
+      kzn = kz
       absorp = 1 - 0.7
       infra = 1 - absorp
-      albedo = 0.7
     elif (ice and Tair(n) >= 0):
+      kzn = kz
       absorp = 1 - 0.3
       infra = 1 - absorp
-      albedo = 0.7
     elif not ice:
+      kzn = kz
       absorp = 1 - reflect
       infra = 1 - absorp
-      albedo = 0.1
     kzm[:,idn] = kzn
     
     ## (1) Heat addition
     # surface heat flux
-    Q = (
-         longwave(cc = CC(n), sigma = sigma, Tair = Tair(n), ea = ea(n), emissivity = emissivity, Jlw = Jlw(n)) + #longwave(emissivity = emissivity, Jlw = Jlw(n)) +
+    Q = (absorp * Jsw(n) + longwave(cc = CC(n), sigma = sigma, Tair = Tair(n), ea = ea(n), emissivity = emissivity, Jlw = Jlw(n)) + #longwave(emissivity = emissivity, Jlw = Jlw(n)) +
             backscattering(emissivity = emissivity, sigma = sigma, Twater = un[0], eps = eps) +
             latent(Tair = Tair(n), Twater = un[0], Uw = Uw(n), p2 = p2, pa = Pa(n), ea=ea(n), RH = RH(n)) + 
             sensible(p2 = p2, B = B, Tair = Tair(n), Twater = un[0], Uw = Uw(n)))  
     
     # heat addition over depth
-    H =  (1- albedo) * (Jsw(n))  * np.exp(-(kd(n) ) * depth)
-    
+    H =  (1- infra) * (Jsw(n))  * np.exp(-(kd(n) ) * depth)
     Hg = (area[:-1]-area[1:])/dx * Hgeo/(4181 * calc_dens(un[0]))
     Hg = np.append(Hg, Hg.min())
     
@@ -303,85 +263,41 @@ def run_thermalmodel(
         Hg[0]) * dt/area[0])
       # all layers in between
         for i in range(1,(nx-1)):
-            u[i] = un[i] + (
-                abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ) + Hg[i])* dt/area[i]
+            u[i] = (un[i] + (
+                abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ) + Hg[i])* dt/area[i])
       # bottom layer
-        u[(nx-1)] = un[(nx-1)] + (abs(H[(nx-1)]-H[(nx-2)]) * area[(nx-1)]/(area[(nx-1)] * dx) * 1/(4181 * calc_dens(un[(nx-1)])) +Hg[(nx-1)]/area[(nx-1)]) * dt
-
-        
+        u[(nx-1)] = (un[(nx-1)] + abs(H[(nx-1)]-H[(nx-1)-1]) * area[(nx-1)]/(area[(nx-1)]*dx) * 1/(4181 * calc_dens(un[(nx-1)])) +Hg[(nx-1)]/area[(nx-1)]) * dt
         # IMPLEMENTATION OF CRANK-NICHOLSON SCHEME
-        
         j = len(un)
         y = np.zeros((len(un), len(un)))
-        
+
         alpha = (dt/dx**2) * kzn
-        
+
         az = - alpha # subdiagonal
         bz = 2 * (1 + alpha) # diagonal
         cz = - alpha # superdiagonal
-        
-        bz[0] = 1
-        az[len(az)-2] = 0
-        bz[len(bz)-1] = 1
-        cz[0] = 0
-        
-        az =  np.delete(az,0)
-        cz =  np.delete(cz,len(cz)-1)
-        
-        # tridiagonal matrix
-        for k in range(j-1):
-            y[k][k] = bz[k]
-            y[k][k+1] = cz[k]
-            y[k+1][k] = az[k]
-        
-        # y[0,1] = 0    
-        # y[j-1, j-1] = 1
-        # y[j-1, j-2] = 0
-        y[j-1, j-1] = 1
-        
-        # print(y[0:4])
-        
-        mn = un * 0.0    
-        mn[0] = un[0]
-        mn[len(mn)-1] = u[len(u)-1]
-        
-        for k in range(1,j-1):
-            mn[k] = alpha[k] * u[k-1] + 2 * (1 - alpha[k]) * u[k] + alpha[k] * u[k]
-
-        # j = len(un)
-        # y = np.zeros((len(un), len(un)))
-
-        # alpha = (dt/dx**2) * kzn
-
-        # az = - alpha # subdiagonal
-        # bz = 2 * (1 + alpha) # diagonal
-        # cz = - alpha # superdiagonal
     
-        # bz[:, 0] = 1
-        # az[:, nx-2] = 0
-        # bz[:, nx-1] = 1
-        # cz[:, 0] = 0
+        bz[:, 0] = 1
+        az[:, nx-2] = 0
+        bz[:, nx-1] = 1
+        cz[:, 0] = 0
     
-        # az = az[:,1:]
-        # cz = cz[:,:-1]
+        az = az[:,1:]
+        cz = cz[:,:-1]
 
-        # y = np.diag_embed(bz, offset=0)+np.diag_embed(az,offset=-1)+np.diag_embed(cz,offset=1) #slightly efficient way of computing the diagonal matrices
-        # y[:, nx-1, nx-1] = 1
+        y = np.diag_embed(bz, offset=0)+np.diag_embed(az,offset=-1)+np.diag_embed(cz,offset=1) #slightly efficient way of computing the diagonal matrices
+        y[:, nx-1, nx-1] = 1
     
-        # mn = np.zeros_like(un)  
-        # mn[:, 0] = un[:, 0]
-        # mn[:,nx-1] = un[:, nx-1]
+        mn = np.zeros_like(un)  
+        mn[:, 0] = un[:, 0]
+        mn[:,nx-1] = un[:, nx-1]
         
-        # mn[:, 1:nx-1] = alpha[:, 1:nx-1]*un[:, :nx-2] + 2 * (1 - alpha[:,1:nx-1])*un[:,1:nx-1] + alpha[:,1:nx-1]*un[:,1:nx-1] #is be same as the loop
+        mn[:, 1:nx-1] = alpha[:, 1:nx-1]*un[:, :nx-2] + 2 * (1 - alpha[:,1:nx-1])*un[:,1:nx-1] + alpha[:,1:nx-1]*un[:,1:nx-1] #is be same as the loop
     
     # DERIVED TEMPERATURE OUTPUT FOR NEXT MODULE
-        # print(y[0:4, ])
-        # print(mn[0:4, ])
-        # print(u)
-        # breakpoint()
-        
         u = np.linalg.solve(y, mn)
     # TODO: implement / figure out this
+    # TODO: what???
     if scheme == 'explicit':
       u[0] = (un[0] + 
         (Q * area[0]/(dx)*1/(4184 * calc_dens(un[0]) ) + abs(H[0+1]-H[0]) * area[0]/(dx) * 1/(4184 * calc_dens(un[0]) ) + 
