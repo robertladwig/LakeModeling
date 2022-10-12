@@ -51,6 +51,7 @@ temp_ice = np.full([nx, nTotalSteps], np.nan)
 diff = np.full([nx, nTotalSteps], np.nan)
 meteo = np.full([9, nTotalSteps], np.nan)
 buoyancy = np.full([nx, nTotalSteps], np.nan)
+td_depth = np.full([1, nTotalSteps], np.nan)
 
 Start = datetime.datetime.now()
 if 'res' in locals() or 'res' in globals():
@@ -127,6 +128,7 @@ for i in range(total_runtime):
   buoyancy[:, matrix_range_start:matrix_range_end] =  res['temp']
   meteo[:, matrix_range_start:matrix_range_end] =  res['meteo_input']
   buoyancy[:, matrix_range_start:matrix_range_end] = res['buoyancy_pgdl']
+  td_depth[0, matrix_range_start:matrix_range_end] = res['thermoclinedepth']
   
 # convert averages from array to data frame
 avgtemp_df = pd.DataFrame(avgtemp, columns=["time", "thermoclineDep", "epi", "hypo", "tot", "stratFlag"])
@@ -147,6 +149,13 @@ plt.show()
 avgtemp_df.plot(x='time', y=['thermoclineDep'], color="black")
 plt.gca().invert_yaxis()
 plt.scatter(avgtemp_df.time, avgtemp_df.stratFlag, c=avgtemp_df.stratFlag)
+plt.show()
+
+# thermocline depth from turbulent mixing
+x_time = np.full([1, nTotalSteps], np.nan)
+x_time[0, 0:matrix_range_end] = np.array(range(0,matrix_range_end))
+plt.gca().invert_yaxis()
+plt.plot(x_time, td_depth, color = 'black', marker = 'o')
 plt.show()
 
 # heatmap of temps  
