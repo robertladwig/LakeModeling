@@ -13,7 +13,9 @@ import seaborn as sns
 if os.environ.get("USERNAME") == 'cal':
      os.chdir("/home/cal/Documents/PostDoc/Projects/LakeModeling/1D_HeatMixing_PGDL")
 else:
-     os.chdir("C:/Users/ladwi/Documents/Projects/R/LakeModeling/1D_HeatMixing_PGDL")
+     os.chdir("/home/robert/Projects/LakeModeling/1D_HeatMixing_PGDL")
+# /home/robert/Projects/
+# C:/Users/ladwi/Documents/Projects/R
 from oneD_HeatMixing_Functions import get_hypsography, provide_meteorology, initial_profile, run_thermalmodel
 
 ## lake configurations
