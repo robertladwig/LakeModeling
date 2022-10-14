@@ -39,7 +39,7 @@ u_ini = initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
                      processed_meteo = meteo_all[0])
                      
 hydrodynamic_timestep = 24 * dt
-total_runtime = 365 * 4
+total_runtime = 365 * 1
 
 startingDate = meteo_all[0]['date'][0]
 
@@ -54,6 +54,8 @@ diff = np.full([nx, nTotalSteps], np.nan)
 meteo = np.full([9, nTotalSteps], np.nan)
 buoyancy = np.full([nx, nTotalSteps], np.nan)
 td_depth = np.full([1, nTotalSteps], np.nan)
+heatflux_lwsl = np.full([1, nTotalSteps], np.nan)
+heatflux_sw = np.full([nx, nTotalSteps], np.nan)
 
 Start = datetime.datetime.now()
 if 'res' in locals() or 'res' in globals():
@@ -131,6 +133,8 @@ for i in range(total_runtime):
   meteo[:, matrix_range_start:matrix_range_end] =  res['meteo_input']
   buoyancy[:, matrix_range_start:matrix_range_end] = res['buoyancy_pgdl']
   td_depth[0, matrix_range_start:matrix_range_end] = res['thermoclinedepth']
+  heatflux_lwsl[0, matrix_range_start:matrix_range_end] = res['heatflux_lwsl']
+  heatflux_sw[:, matrix_range_start:matrix_range_end] = res['heatflux_sw']
   
 # convert averages from array to data frame
 avgtemp_df = pd.DataFrame(avgtemp, columns=["time", "thermoclineDep", "epi", "hypo", "tot", "stratFlag"])
@@ -153,16 +157,24 @@ plt.gca().invert_yaxis()
 plt.scatter(avgtemp_df.time, avgtemp_df.stratFlag, c=avgtemp_df.stratFlag)
 plt.show()
 
-# thermocline depth from turbulent mixing
-x_time = np.full([1, nTotalSteps], np.nan)
-x_time[0, 0:matrix_range_end] = np.array(range(0,matrix_range_end))
-plt.gca().invert_yaxis()
-plt.plot(x_time, td_depth, color = 'black', marker = 'o')
-plt.show()
-
 # heatmap of temps  
 plt.subplots(figsize=(40,40))
 sns.heatmap(temp, cmap=plt.cm.get_cmap('Spectral_r'), xticklabels=1000, yticklabels=2)
 plt.show()
 
+# heatmap of diffusivities  
+plt.subplots(figsize=(40,40))
+sns.heatmap(diff, cmap=plt.cm.get_cmap('Spectral_r'), xticklabels=1000, yticklabels=2)
+plt.show()
 
+plt.subplots(figsize=(40,40))
+sns.heatmap(heatflux_sw, cmap=plt.cm.get_cmap('Spectral_r'), xticklabels=1000, yticklabels=2)
+plt.show()
+
+x_time = np.full([1, nTotalSteps], np.nan)
+x_time[0, 0:matrix_range_end] = np.array(range(0,matrix_range_end))
+plt.plot(x_time[0,:], heatflux_lwsl[0,:], color = 'black')
+plt.show()
+
+dataframe = pd.DataFrame(heatflux_lwsl) 
+dataframe.to_csv(r"heatflux_python.csv")

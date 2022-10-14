@@ -38,7 +38,7 @@ u_ini <- initial_profile(initfile = 'bc/obs.txt', nx = nx, dx = dx,
 
 ### EXAMPLE RUNS
 hydrodynamic_timestep = 24 * 3600 #24/4 * dt
-total_runtime <- 365 * 4
+total_runtime <- 365 * 1
 startingDate <- meteo_all[[1]]$datetime[1]
 
 temp <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
@@ -63,6 +63,10 @@ buoyancy <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                nrow = nx)
 icethickness <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
                        nrow = 1)
+heatflux_lwsl <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+                       nrow = 1)
+heatflux_sw <- matrix(NA, ncol = total_runtime * hydrodynamic_timestep/ dt,
+               nrow = nx)
 # do the meteo interpolation all at the start
 meteo = get_interp_drivers(meteo_all=meteo_all, total_runtime=total_runtime, 
                            hydrodynamic_timestep=hydrodynamic_timestep, dt=dt, method="integrate")
@@ -128,7 +132,8 @@ for (i in 1:total_runtime){
   buoyancy[, matrix_range_start:matrix_range_end] =  res$temp
   meteo_output[, matrix_range_start:matrix_range_end] =  res$meteo_input
   buoyancy[, matrix_range_start:matrix_range_end] = res$buoyancy_pgdl
-  icethickness[, matrix_range] =  res$icethickness_matrix
+  heatflux_lwsl[, matrix_range] =  res$heatflux_lwsl
+  heatflux_sw[, matrix_range_start:matrix_range_end] =  res$heatflux_sw
   
   average <- res$average %>%
     mutate(datetime = as.POSIXct(startingDate + time),
@@ -150,7 +155,6 @@ time =  startingDate + seq(1, ncol(temp), 1) * dt
 avgtemp = as.data.frame(avgtemp)
 colnames(avgtemp) = c('time', 'epi', 'hyp', 'tot', 'stratFlag', 'thermoclineDep')
 avgtemp$time = time
-
 
 ggplot(avgtemp) +
   geom_line(aes(time, epi, col = 'epilimnion')) +
@@ -174,6 +178,29 @@ df <- data.frame(cbind(time, t(temp)) )
 colnames(df) <- c("time", as.character(paste0(seq(1,nrow(temp)))))
 m.df <- reshape2::melt(df, "time")
 m.df$time <- time
+
+
+#### test python vs r
+python <- read.csv('heatflux_python.csv')
+heatflux_python <- as.numeric(unlist(python))
+heatflux_r <- heatflux_lwsl
+df_src <- data.frame('time' = time, '
+                  python' = as.numeric(heatflux_python[-1]),
+                    'r' = as.numeric(heatflux_r))
+colnames(df_src) <- c('time', 'python', 'r')
+ggplot(df_src) +
+  geom_line(aes(time, r, col = 'R')) +
+  geom_point(aes(time, r, col = 'R')) +
+  geom_line(aes(time, python, col = 'Python')) +
+  geom_point(aes(time, python, col = 'Python')) +
+  theme_minimal()
+ggplot(df_src) +
+  geom_point(aes(r, python)) +
+  theme_minimal()
+ggplot(df_src) +
+  geom_point(aes(time, r - python)) +
+  theme_minimal()
+####
 
 ggplot(m.df, aes((time), as.numeric(variable))) +
   geom_raster(aes(fill = as.numeric(value)), interpolate = TRUE) +

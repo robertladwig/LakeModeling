@@ -589,8 +589,11 @@ def run_thermalmodel(
   therm_z = np.full([1,nCol], np.nan)
   mix_z = np.full([1,nCol], np.nan)
   Him = np.full([1,nCol], np.nan)
+  Hm = np.full([nx, nCol], np.nan) 
+  Qm = np.full([1,nCol], np.nan)
   
   if pgdl_mode == 'on':
+    um_heat = np.full([nx, nCol], np.nan)
     um_diff = np.full([nx, nCol], np.nan)
     um_mix = np.full([nx, nCol], np.nan)
     um_conv = np.full([nx, nCol], np.nan)
@@ -643,7 +646,12 @@ def run_thermalmodel(
     
     Hg = (area[:-1]-area[1:])/dx * Hgeo/(4181 * calc_dens(un[0]))
     Hg = np.append(Hg, Hg.min())
-    
+
+    if pgdl_mode == 'on':
+      Hm[:, idn] = H
+      Qm[0, idn] = Q
+
+
     ## (2) DIFFUSION
     if scheme == 'implicit':
         u[0] = (un[0] + 
@@ -655,6 +663,9 @@ def run_thermalmodel(
                 abs(H[i+1]-H[i]) * area[i]/(dx) * 1/(4184 * calc_dens(un[i]) ) + Hg[i])* dt/area[i]
       # bottom layer
         u[(nx-1)] = un[(nx-1)] + (abs(H[(nx-1)]-H[(nx-2)]) * area[(nx-1)]/(area[(nx-1)] * dx) * 1/(4181 * calc_dens(un[(nx-1)])) +Hg[(nx-1)]/area[(nx-1)]) * dt
+
+        if pgdl_mode == 'on':
+          um_heat[:, idn] = u
 
         # print(u)
         # print(H)
@@ -696,41 +707,15 @@ def run_thermalmodel(
         mn[0] = u[0]
         mn[len(mn)-1] = u[len(u)-1]
         
-        for k in range(1,j-2):
+        for k in range(1,j-1):
             mn[k] = alpha[k] * u[k-1] + 2 * (1 - alpha[k]) * u[k] + alpha[k] * u[k]
 
-        # j = len(un)
-        # y = np.zeros((len(un), len(un)))
-
-        # alpha = (dt/dx**2) * kzn
-
-        # az = - alpha # subdiagonal
-        # bz = 2 * (1 + alpha) # diagonal
-        # cz = - alpha # superdiagonal
-    
-        # bz[:, 0] = 1
-        # az[:, nx-2] = 0
-        # bz[:, nx-1] = 1
-        # cz[:, 0] = 0
-    
-        # az = az[:,1:]
-        # cz = cz[:,:-1]
-
-        # y = np.diag_embed(bz, offset=0)+np.diag_embed(az,offset=-1)+np.diag_embed(cz,offset=1) #slightly efficient way of computing the diagonal matrices
-        # y[:, nx-1, nx-1] = 1
-    
-        # mn = np.zeros_like(un)  
-        # mn[:, 0] = un[:, 0]
-        # mn[:,nx-1] = un[:, nx-1]
-        
-        # mn[:, 1:nx-1] = alpha[:, 1:nx-1]*un[:, :nx-2] + 2 * (1 - alpha[:,1:nx-1])*un[:,1:nx-1] + alpha[:,1:nx-1]*un[:,1:nx-1] #is be same as the loop
-    
     # DERIVED TEMPERATURE OUTPUT FOR NEXT MODULE
 
         
-        # print(y)
-        # print(mn)
-        # breakpoint()
+        #print(y)
+        #print(mn)
+        #breakpoint()
         u = np.linalg.solve(y, mn)
     # TODO: implement / figure out this
     if scheme == 'explicit':
@@ -747,6 +732,7 @@ def run_thermalmodel(
       Hg[(nx-1)]/area[(nx-1)]) * dt)
                                                            
     if pgdl_mode == 'on':
+      um_heat[:, idn] = u
       um_diff[:, idn] = u
     ## (3) TURBULENT MIXING OF MIXED LAYER
     # the mixed layer depth is determined for each time step by comparing kinetic 
@@ -918,7 +904,7 @@ def run_thermalmodel(
       df_z_df_sim.loc[j, 'stratFlag'] = 1
     else:
       df_z_df_sim.loc[j, 'stratFlag'] = 0
-  
+  #breakpoint()
   dat = {'temp' : um,
           'diff' : kzm,
           'mixing' : mix,
@@ -949,7 +935,9 @@ def run_thermalmodel(
                'temp_conv' : um_conv,
                'temp_ice' : um_ice,
                'meteo_input' : meteo_pgdl,
-               'buoyancy_pgdl' : n2_pgdl}
+               'buoyancy_pgdl' : n2_pgdl,
+               'heatflux_lwsl' : Qm,
+               'heatflux_sw' : Hm}
   
   return(dat)
 

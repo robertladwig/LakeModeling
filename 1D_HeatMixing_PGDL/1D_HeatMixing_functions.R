@@ -753,6 +753,8 @@ run_thermalmodel <- function(u, startTime, endTime,
   therm.z <- rep(NA, length =N_steps)
   mix.z <- rep(NA, length = N_steps)
   Him <- rep(NA, length = N_steps)
+  Hm <- matrix(NA, ncol =N_steps, nrow = nx)
+  Qm <- rep(NA, length = N_steps)
   
   SW <- rep(NA, length = N_steps)
   LW_in <- rep(NA, length = N_steps)
@@ -832,6 +834,8 @@ run_thermalmodel <- function(u, startTime, endTime,
     
     if (pgdl_mode == 'on'){
       um_heat[, n] <- u
+      Hm[, n] <- H
+      Qm[n] = Q
     }
     
     
@@ -895,7 +899,8 @@ run_thermalmodel <- function(u, startTime, endTime,
         mn[g] = alpha[g] * u[g-1] + 2 * (1-alpha[g])*u[g] + alpha[g] * u[g+1]
       }
       
-
+      # print(y)
+      # print(mn)
       u  <- solve(y, mn)
       
     }
@@ -1186,7 +1191,9 @@ run_thermalmodel <- function(u, startTime, endTime,
                'temp_ice' = um_ice,
                'meteo_input' = meteo_pgdl,
                'buoyancy_pgdl' = n2_pgdl,
-               'icethickness_matrix' = Him)
+               'icethickness_matrix' = Him,
+               'heatflux_lwsl' = Qm,
+               'heatflux_sw' = Hm)
   }
   
   return(dat)
