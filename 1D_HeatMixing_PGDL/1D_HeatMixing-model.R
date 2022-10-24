@@ -197,8 +197,10 @@ ggplot(df_src) +
 ggplot(df_src) +
   geom_point(aes(r, python)) +
   theme_minimal()
-ggplot(df_src) +
+ggplot(df_src, aes(time, r - python)) +
   geom_point(aes(time, r - python)) +
+  geom_line(aes(time, r - python)) +
+  stat_smooth() +
   theme_minimal()
 ####
 
