@@ -715,7 +715,7 @@ def run_thermalmodel(
         
         #print(y)
         #print(mn)
-        #breakpoint()
+        breakpoint()
         u = np.linalg.solve(y, mn)
     # TODO: implement / figure out this
     if scheme == 'explicit':
